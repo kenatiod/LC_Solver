@@ -140,7 +140,7 @@ python3 LCm_Solver.py \
   --workers 10
 ```
 
-On a 10-core Mac mini M-series this completes in under one hour and writes
+On a 10-core Mac mini M-series this completes in under two hours and writes
 `COMPLETE_NO_HITS` verdicts for every ω in the range. Users may notice a
 considerable pause at the last mask count of each ω section as the last
 worker thread processes the remaining masks alone.
