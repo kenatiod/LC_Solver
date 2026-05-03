@@ -242,9 +242,9 @@ any $m < P_{r+1}$ satisfies $\omega(m) \leq r$. For $n(n+1)$ to be prime-complet
 in the interval $P_r \leq n(n+1) < P_{r+1}$, its greatest prime factor index must
 also satisfy $\pi(\mathrm{gpf}(n(n+1))) \leq r$.
 
-The primorial barrier grows as $r \sim 2\log n / \log\log n$, while smooth-number
+The primorial barrier grows as $r \sim 2\log(n) / \log(\log(n))$, while smooth-number
 theory (Dickman–de Bruijn) predicts the minimum greatest-prime-factor index grows as
-$\sim (\log n)^2 / (2\log\log n)$. Their ratio grows as $\log(n)/4 \to \infty$,
+$\sim (\log(n))^2 / (2\log(\log(n)))$. Their ratio grows as $\log(n)/4 \to \infty$,
 implying that prime-complete products must become impossible beyond a finite point.
 
 ### Størmer's theorem
@@ -257,7 +257,7 @@ fixed $\omega$, the Lehmer-Clements search is provably complete.
 ### The CRT tail-closure argument
 
 The catch-up block $H_\omega = \{p_9, \ldots, p_\omega\}$ must be absorbed
-simultaneously by the coprime pair $(n, n+1)$ for any order-$\omega$ solution.
+simultaneously by the coprime pair $(n, n+1)$ for any order $\omega$ solution.
 The CRT/LCM Catch-Up Proposition states: if $\lambda_{H_\omega}(q,\sigma) > L_\omega$
 for every mask $q$ and side assignment $\sigma$, then no prime-complete products
 of order $\omega$ exist. As $\omega$ grows, the LCM of entry periods grows far faster
