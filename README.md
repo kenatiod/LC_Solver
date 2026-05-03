@@ -140,7 +140,7 @@ python3 LCm_Solver.py \
   --workers 10
 ```
 
-On a 10-core Mac mini M-series this completes in under two hours and writes
+On a 10-core Mac mini M-series this completes in under five hours and writes
 `COMPLETE_NO_HITS` verdicts for every ω in the range. Users may notice a
 considerable pause at the last mask count of each ω section as the last
 worker thread processes the remaining masks alone.
@@ -309,7 +309,7 @@ providing a tamper-evident audit trail.
 
 ## Related Programs
 
-- **[Nr_Solver](https://github.com/kenatiod/Nr_Solver)** — earlier Størmer–Lehmer enumerator for run-length-$r$ products; data files for $\omega = 2$–$17$ are archived there.
+- **[Nr_Solver](https://github.com/kenatiod/Nr_Solver)** — earlier Størmer–Lehmer enumerator for run-length $r$ products; data files for $\omega = 2$ to $17$ are archived there.
 - **[Delta_min](https://github.com/kenatiod/Delta_min)** — C program that scans doubling intervals for the minimum $\pi(\mathrm{gpf}(n(n+1))) - \omega(n(n+1))$ gap, providing heuristic corroboration for finiteness across $n$ up to $2^{46}$.
 
 ---
