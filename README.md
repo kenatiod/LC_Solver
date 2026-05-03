@@ -2,7 +2,7 @@
 
 **Lehmer-Clements enumerator for prime-complete products of consecutive integers**
 
-By Ken Clements and Claude (Perplexity AI) · Lehmer-Clements algorithm first described: May 1, 2026
+By Ken Clements · Lehmer-Clements algorithm first described: May 1, 2026
 
 ---
 
@@ -324,7 +324,7 @@ If you use this code or the certificate data in your research, please cite:
 
 ## Authors
 
-Ken Clements and Claude (Perplexity AI), May 2026.
+Ken Clements May 2026.
 
 Lehmer-Clements algorithm first described: May 1, 2026.
 
