@@ -78,7 +78,7 @@ arithmetic comparison — no candidate values need to be examined.
 
 | File | Description |
 |------|-------------|
-| `LCr_Solver.py` | Single-process reference implementation (v3) |
+| `LC_Solver.py` | Single-process reference implementation (v3) |
 | `LCm_Solver.py` | Multiprocessing version — masks parallelised across CPU cores (v1) |
 
 Both versions produce identical output and use the same certificate format.
@@ -118,7 +118,7 @@ No Python packages beyond the standard library are required.
 ### Search mode — find all prime-complete products for ω = 2..8
 
 ```bash
-python3 LCr_Solver.py \
+python3 LC_Solver.py \
   --mode search \
   --start_omega 2 \
   --end_omega 8 \
@@ -149,7 +149,7 @@ worker thread processes the remaining masks alone.
 
 ## Command-Line Reference
 
-All options apply to both `LCr_Solver.py` and `LCm_Solver.py`.
+All options apply to both `LC_Solver.py` and `LCm_Solver.py`.
 `--workers` is available only in `LCm_Solver.py`.
 
 | Option | Default | Description |
