@@ -1,71 +1,79 @@
 #!/usr/bin/env python3
-# LCm_Solver.py version 4.0
+# LCm_Solver.py version 6.4-prune
 
 """
-LCm_Solver — Lehmer-Clements prime-complete enumerator, multiprocessing edition.
-
+LCm_Solver — Lehmer-Clements prime-complete enumerator, version 6.4-prune
 ================================================================================
-VERSION 4.0  (June 2026) — VEIN-SPACE CORRECTION
+VERSION 6.4-prune (June 2026) — Y1-SUPPORT RANK PRUNING
 ================================================================================
-v3.1 enumerated only veins of the form D = 2*q (q a product of odd census
-primes), i.e. it forced the Pell discriminant to be EVEN.  That is unsound:
-the correct discriminant of a consecutive pair is the squarefree kernel
-D = sf(m(m+1)) (Step-0 Normalization Lemma), which is ODD whenever 2 divides
-the even member to an even power.  Eleven of the 28 known prime-complete pairs
-have an ODD kernel — including the last pair m = 633555 (D = 255255), which is
-the fundamental solution of its (odd) vein.  v3.1 could not represent any of
-them, so a "no prime-complete pair" verdict from v3.1 was structurally blind to
-exactly the hits the proof concerns.
 
-v4.0 enumerates the FULL correct vein space and matches the Step-0 lemmas:
+Purpose
+-------
+For a target omega, enumerate squarefree discriminants D | P_omega, solve
 
-  C1. VEIN SPACE.  D ranges over every squarefree divisor of P_omega with
-      D > 1, of EITHER parity.  A mask is a nonempty subset of ALL omega
-      census primes {p_1=2, ..., p_omega}; D = product of the masked primes.
-      (No D = 2q restriction; no q=2 special-casing.)
+    x^2 - D y^2 = 1,
 
-  C2. SIGMA DOMAIN = sigma_U.  The side assignment is enumerated ONLY over the
-      unramified odd census primes
-          U(D, omega) = { p <= p_omega : p does not divide D, p != 2 }.
-      Ramified primes (p | D) and p = 2 impose NO index congruence: they divide
-      m(m+1) automatically (p | D => p | m; 2 | m(m+1) always for consecutive
-      integers).  Their side is read off after the fact, never chosen.  This is
-      exactly sigma_U of the Step-0 canonicalization note.
+and certify/search for prime-complete consecutive pairs
 
-  C3. ODD WHEEL ORDER => SIDE B UNAVAILABLE.  For an unramified odd p, side A
-      is hit iff w_p | j and side B iff w_p even and j == w_p/2 (mod w_p).  If
-      w_p is odd, side B is unrealizable; any sigma_U asking side B at such a p
-      yields a DECLARED-EMPTY system (EXCLUDED_EMPTY).  This falls out of the
-      seat-set intersection automatically (the B side-set is empty).
+    m = (x_j - 1)/2,   m+1 = (x_j + 1)/2,
 
-  C4. PROVEN INDEX CEILING.  L(omega) defaults to the unconditional
-      max(30, p_omega + 1) (primitive-divisor / Lehmer ceiling, Cor 3.13 of the
-      Step-0 note).  Overridable with --L_override for experiments, but a
-      certificate run must use a value at least the proven ceiling.  A solvable
-      seat system whose minimal in-range index exceeds L is EXCLUDED_LAMBDA;
-      under the proven ceiling this is a sound exclusion (no prime-complete pair
-      from that (D, sigma_U) can exist below the ceiling, hence none at all).
+with rad(m(m+1)) = P_omega.
 
-  C5. KNOWN-PAIR REGRESSION GATE.  Before any certify run is trusted, the
-      enumerator is self-tested: every known prime-complete pair at the target
-      omega level MUST be representable and recovered by the corrected pipeline.
-      Run with --self_test (or it runs automatically at the start of certify
-      mode) and aborts if any known pair is missed.  This is precisely the check
-      that would have caught the v3.1 bug.
+Version 6 extends the v5 high-omega engine.  Version 6.2 keeps the v6 mathematics 
+but changes the default work unit to Pell microblocks: at most one low-prime DFS 
+bit per high-mask task.  At omega=16 this changes the default from 1,024 blocks 
+of 64 discriminants to 32,768 blocks of one or two discriminants, so one 
+pathological Pell discriminant cannot strand a worker with a large private queue.
 
-Mathematical core (unchanged identities)
-----------------------------------------
-With x^2 - D*y^2 = 1, D squarefree > 1, x odd: m = (x-1)/2, m+1 = (x+1)/2,
-m(m+1) = D*z^2 with y = 2z.  m, m+1 are P_omega-smooth and the pair is
-prime-complete at level omega iff rad(m(m+1)) = P_omega, i.e. every census
-prime divides m(m+1).  Seat conditions (Seat Lemma): for unramified odd p,
-p | m  <=>  x_j == +1 (mod p)  (side A);  p | m+1  <=>  x_j == -1 (mod p)
-(side B).
+Version 6.0 note:  Version 4 enumerated every canonical
+(D, sigma_U) seat system.  That is a useful proof object, but at omega=18 it
+creates about 2.58e8 sigma rows.  Merely writing those rows to /dev/null still
+requires Python dictionary/list construction, IPC, formatting, and aggregation.
 
-Parallelism, PARI/GP interface, checkpointing, status protocol, and the
-JSON/CSV output schema are inherited from v3.1.
+The v6 default engine computes a provable rank-of-apparition LCM for each D and 
+checks only admissible Pell indices j <= L.  Under
+the same Lehmer/primitive-divisor ceiling used by v4,
 
-By Ken Clements, with Claude (Anthropic), June 2026.
+    L(omega) = max(30, p_omega + 1),
+
+this is a direct certificate: every possible target pair appears among these
+indices.  The work is bounded by roughly (2^omega-1) * L recurrence positions,
+before the y1 smoothness gate.  For omega=18 this is ~16.25 million index
+positions instead of ~258 million sigma-row decisions.
+
+Main systems changes
+--------------------
+1. cypari2 fast path.  Each worker initializes one PARI session and calls the
+   in-memory pellxy() function directly.  If cypari2 is unavailable or fails,
+   v6 falls back to a persistent subprocess-gp session.
+
+2. Squarefree-only Pell function.  Because D is generated as a squarefree
+   divisor of P_omega, the GP/PARI function does not factor D internally.
+
+3. y1 smoothness gate.  If the fundamental y1 is not P_omega-smooth, then y1
+   divides every y_j in the Pell-Lucas sequence, so that discriminant cannot
+   produce a P_omega-smooth consecutive pair and is skipped.
+
+4. In-worker block generation.  Tasks are high-prime blocks, not individual D's.
+   Each worker runs a DFS over the low primes internally and returns one compact
+   aggregate per block.  In v6.3, --max_low_bits 0 is also supported: H=omega,
+   so each task is a single nonempty discriminant mask.  This is adapted from
+   A002072_Solver v10.
+
+5. Compact audit output.  v6 writes optional one-row-per-D CSV records, not
+   one-row-per-(D,sigma_U) certificate rows.  This keeps high-omega audit files
+   feasible.
+
+Soundness note
+--------------
+A v6 "certify" verdict is conditional on the index ceiling L being valid for
+the target theorem.  This is the same ceiling asserted in v4's Cor. 3.13 note,
+but v6 uses it through a rank-LCM necessary condition: every unramified odd
+census prime p must divide y_j, so j must be a multiple of the rank
+rho_p(D).  If the accumulated LCM exceeds L, the vein is provably dead;
+otherwise only multiples of that LCM are checked.
+
+By Ken Clements, version 6.3 implementation generated with ChatGPT, June 2026.
 """
 
 from __future__ import annotations
@@ -84,24 +92,22 @@ import resource
 import subprocess
 import sys
 import time
-import concurrent.futures
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 try:
     sys.set_int_max_str_digits(0)
 except Exception:
     pass
 
-program_name, program_version = "LCm_Solver", 4.0
+PROGRAM_NAME = "LCm_Solver"
+PROGRAM_VERSION = "6.4-prune"
 
 # ---------------------------------------------------------------------------
-# Known prime-complete pairs (m values), keyed by level omega.
-# Used by the regression gate (C5) and as ground truth in self-test.
-# These are the consecutive-integer prime-complete records; each is the unique
-# representative of its level except where the level repeats (none do here).
+# Known prime-complete consecutive pairs, keyed by omega level.
+# Regression gate: a certificate run should recover all catalogued pairs.
 # ---------------------------------------------------------------------------
 KNOWN_PRIME_COMPLETE: Dict[int, List[int]] = {
     1:  [1],
@@ -115,14 +121,47 @@ KNOWN_PRIME_COMPLETE: Dict[int, List[int]] = {
 }
 
 # ---------------------------------------------------------------------------
+# Optional accelerators
+# ---------------------------------------------------------------------------
+try:
+    import gmpy2  # type: ignore
+    from gmpy2 import mpz as _mpz  # type: ignore
+
+    def mpz(x):
+        return _mpz(x)
+
+    HAS_GMPY2 = True
+except Exception:
+    def mpz(x):  # type: ignore[misc]
+        return int(x)
+
+    HAS_GMPY2 = False
+
+try:
+    import cypari2 as _cypari2  # type: ignore
+    HAS_CYPARI2 = True
+except Exception:
+    _cypari2 = None  # type: ignore
+    HAS_CYPARI2 = False
+
+try:
+    _popcount = int.bit_count  # unbound method
+    _popcount(0)
+except Exception:
+    def _popcount(x: int) -> int:  # type: ignore[misc]
+        return bin(x).count("1")
+
+# ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
+
 def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
+
 
 def sha256_file(path: str) -> str:
     h = hashlib.sha256()
@@ -131,17 +170,21 @@ def sha256_file(path: str) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+
 def sieve(n: int) -> List[int]:
     if n < 2:
         return []
     flags = bytearray([1]) * (n + 1)
     flags[0] = flags[1] = 0
-    for i in range(2, int(n**0.5) + 1):
+    for i in range(2, int(n ** 0.5) + 1):
         if flags[i]:
-            flags[i*i::i] = bytearray(len(flags[i*i::i]))
+            flags[i * i::i] = bytearray(len(flags[i * i::i]))
     return [i for i, f in enumerate(flags) if f]
 
+
 def first_n_primes(n: int) -> List[int]:
+    if n <= 0:
+        return []
     est = max(15, int(n * (math.log(n) + math.log(math.log(n + 2)) + 2)))
     ps = sieve(est)
     while len(ps) < n:
@@ -149,40 +192,35 @@ def first_n_primes(n: int) -> List[int]:
         ps = sieve(est)
     return ps[:n]
 
-def gcd(a: int, b: int) -> int:
+
+def proven_L(pmax: int) -> int:
+    """Unconditional index ceiling used by LCm v4: max(30, p_omega + 1)."""
+    return max(30, pmax + 1)
+
+
+def gcd_int(a: int, b: int) -> int:
     while b:
         a, b = b, a % b
-    return a
+    return abs(a)
 
-def lcm(a: int, b: int) -> int:
-    return a // gcd(a, b) * b
 
-def is_P_smooth(x: int, primes: Tuple[int, ...]) -> bool:
-    if x <= 0:
-        return False
-    for p in primes:
-        while x % p == 0:
-            x //= p
-    return x == 1
+def lcm_int(a: int, b: int) -> int:
+    if a == 0 or b == 0:
+        return 0
+    return a // gcd_int(a, b) * b
 
-def factor_over_P(n: int, primes: Tuple[int, ...]) -> Tuple[Dict[int, int], int]:
-    rem, out = n, {}
-    for p in primes:
-        if rem % p == 0:
-            e = 0
-            while rem % p == 0:
-                rem //= p
-                e += 1
-            out[p] = e
-        if rem == 1:
-            break
-    return out, rem
 
-def support_tuple(f: Dict[int, int]) -> Tuple[int, ...]:
-    return tuple(sorted(f.keys()))
+def peak_rss_mb() -> float:
+    try:
+        ru = resource.getrusage(resource.RUSAGE_SELF)
+        if platform.system() == "Darwin":
+            return ru.ru_maxrss / (1024 * 1024)
+        return ru.ru_maxrss / 1024
+    except Exception:
+        return 0.0
+
 
 def D_from_mask(mask: int, primes: Tuple[int, ...]) -> int:
-    """Vein discriminant: product of ALL masked census primes (C1)."""
     D, tmp, i = 1, mask, 0
     while tmp:
         if tmp & 1:
@@ -191,95 +229,129 @@ def D_from_mask(mask: int, primes: Tuple[int, ...]) -> int:
         i += 1
     return D
 
-def primes_in_mask(mask: int, primes: Tuple[int, ...]) -> List[int]:
-    result, tmp, i = [], mask, 0
+
+def mask_to_primes(mask: int, primes: Tuple[int, ...]) -> List[int]:
+    out: List[int] = []
+    tmp, i = mask, 0
     while tmp:
         if tmp & 1:
-            result.append(primes[i])
+            out.append(primes[i])
         tmp >>= 1
         i += 1
-    return result
+    return out
 
-def unramified_odd_primes(D: int, primes: Tuple[int, ...]) -> List[int]:
-    """U(D, omega) = { p <= p_omega : p does not divide D, p != 2 } (C2)."""
-    return [p for p in primes if p != 2 and D % p != 0]
 
-def proven_L(pmax: int) -> int:
-    """Unconditional index ceiling max(30, p_omega + 1) (C4, Cor 3.13)."""
-    return max(30, pmax + 1)
+def choose_high_bits(omega: int, block_log2: int, workers: int,
+                     min_blocks_per_worker: int = 64,
+                     max_low_bits: int = 7) -> int:
+    """Choose high-mask split H.
 
-def peak_rss_mb() -> float:
-    try:
-        ru = resource.getrusage(resource.RUSAGE_SELF)
-        if platform.system() == "Darwin":
-            return ru.ru_maxrss / (1024 * 1024)
-        else:
-            return ru.ru_maxrss / 1024
-    except Exception:
-        return 0.0
+    ``low_bits = omega - H`` is the number of low-prime DFS bits per task.
+    v6.2 defaulted to ``max_low_bits=1`` (one or two discriminants per task).
+    v6.3 also permits ``max_low_bits=0``; then H=omega and each nonempty
+    high_mask is exactly one discriminant task.
+
+    These are load-balancing constraints only.  They do not change the set of
+    discriminants or any LC-rank proof condition.
+    """
+    if omega <= 1:
+        return 0
+    if max_low_bits <= 0:
+        return omega
+    min_blocks = max(2, workers * max(1, min_blocks_per_worker))
+    H_from_block_size = omega - max(1, block_log2)
+    H_from_min_blocks = math.ceil(math.log2(min_blocks))
+    H_from_low_cap = omega - max(1, max_low_bits)
+    H = max(H_from_block_size, H_from_min_blocks, H_from_low_cap)
+    return max(0, min(H, omega - 1))
+
+
+def high_mask_sort_key(high_mask: int, primes_high: Tuple[int, ...]) -> Tuple[int, float, int]:
+    """Heuristic difficulty key for block scheduling.
+
+    Blocks containing many large high primes tend to contain larger D values and
+    are often Pell-expensive.  Submitting them first reduces tail latency.  The
+    key is only a scheduling heuristic; correctness is independent of it.
+    """
+    pc = _popcount(high_mask)
+    log_prod = 0.0
+    for i, p in enumerate(primes_high):
+        if (high_mask >> i) & 1:
+            log_prod += math.log(p)
+    return (pc, log_prod, high_mask)
+
 
 # ---------------------------------------------------------------------------
-# Fast-doubling Pell exponentiation
+# PARI / GP Pell interface
 # ---------------------------------------------------------------------------
 
-def pell_power(x1: int, y1: int, D: int, n: int) -> Tuple[int, int]:
-    if n == 0:
-        return 1, 0
-    xr, yr = 1, 0
-    xb, yb = x1, y1
-    while n:
-        if n & 1:
-            xr, yr = xr * xb + D * yr * yb, xr * yb + yr * xb
-        xb, yb = xb * xb + D * yb * yb, 2 * xb * yb
-        n >>= 1
-    return xr, yr
-
-# ---------------------------------------------------------------------------
-# PARI/GP interface
-# ---------------------------------------------------------------------------
-
-_PELLXY_GP = r"""
-pellxy_cf(D,mx=0)={
-my(a0=sqrtint(D),m=0,d=1,a=a0,p0=1,p1=a0,q0=0,q1=1);
-while(p1^2-D*q1^2!=1,
-m=d*a-m;d=(D-m^2)/d;a=(a0+m)\d;
-my(p2=a*p1+p0,q2=a*q1+q0);p0=p1;p1=p2;q0=q1;q1=q2;
-if(mx>0&&p1>mx,return([0,0])));[p1,q1]};
-pellxy(D,mx=0)={
-if(D<=0,error("D<=0"));
-if(issquare(D),error("square"));
-my(F=factor(D),P=F[,1],E=F[,2],d=1,s=1);
-for(i=1,#P,my(e=E[i]);if(e%2,d*=P[i]);s*=P[i]^(e\2));
-my(v=pellxy_cf(d,mx));if(v==[0,0],return([0,0]));
-my(a=v[1],b=v[2]);
-if(s==1,return([a,b]));
-my(a1=a,b1=b);
-while(b%s,my(aa=a1*a+d*b1*b,bb=a1*b+b1*a);a=aa;b=bb;
-if(mx>0&&a>mx,return([0,0])));
-my(y=b/s);
-if(a^2-D*y^2!=1,error("check failed"));
-[a,y]};
+# D is already squarefree in this solver, so no factor(D) normalization is done.
+_PELL_GP_SRC = r"""
+pellxy(D, max_x=0)={
+  if(D<=0, error("D<=0"));
+  if(issquare(D), error("D is square"));
+  my(a0=sqrtint(D), m=0, d=1, a=a0, p0=1, p1=a0, q0=0, q1=1);
+  while(p1^2 - D*q1^2 != 1,
+    m = d*a - m;
+    d = (D - m^2)/d;
+    a = (a0 + m)\d;
+    my(p2=a*p1+p0, q2=a*q1+q0);
+    p0=p1; p1=p2; q0=q1; q1=q2;
+    if(max_x>0 && p1>max_x, return([0,0]));
+  );
+  if(max_x>0 && p1>max_x, return([0,0]));
+  [p1, q1];
+};
 """
 
-_BEGIN = "__BEGIN__"
-_END = "__END__"
 _VEC2_RE = re.compile(r"^\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]\s*$")
+_SENTINEL = "__LCM_SOLVER_V6_SEP__"
 
-_gp_proc: Optional[subprocess.Popen] = None
-_gp_path: str = "gp"
+_PARI_SESSION = None
+_GP_PROC: Optional[subprocess.Popen] = None
+_GP_PATH_GLOBAL = "gp"
+
 
 def _gp_kill() -> None:
-    global _gp_proc
-    if _gp_proc is not None:
+    global _GP_PROC
+    if _GP_PROC is not None:
         try:
-            _gp_proc.kill()
+            _GP_PROC.kill()
         except Exception:
             pass
-    _gp_proc = None
+    _GP_PROC = None
+
+
+def _init_pari(gp_path: str, quiet: bool = True) -> None:
+    """Initialize a cypari2 session in this process if available."""
+    global _PARI_SESSION, _GP_PATH_GLOBAL
+    _GP_PATH_GLOBAL = gp_path
+    _PARI_SESSION = None
+    if not HAS_CYPARI2:
+        return
+    try:
+        pari = _cypari2.Pari()  # type: ignore[union-attr]
+        try:
+            pari.allocatemem(256 * 1024 * 1024, silent=True)
+        except TypeError:
+            import contextlib
+            import io
+            with contextlib.redirect_stdout(io.StringIO()):
+                pari.allocatemem(256 * 1024 * 1024)
+        pari(_PELL_GP_SRC)
+        v = pari("pellxy(46)")
+        if int(v[0]) ** 2 - 46 * int(v[1]) ** 2 != 1:
+            raise RuntimeError("cypari2 Pell self-test failed")
+        _PARI_SESSION = pari
+    except Exception as e:
+        _PARI_SESSION = None
+        if not quiet:
+            print(f"  [pari] cypari2 init failed: {e!r}; using subprocess gp", flush=True)
+
 
 def _gp_start() -> subprocess.Popen:
     p = subprocess.Popen(
-        [_gp_path, "-q"],
+        [_GP_PATH_GLOBAL, "-q"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -287,340 +359,575 @@ def _gp_start() -> subprocess.Popen:
         bufsize=1,
     )
     assert p.stdin and p.stdout
-    p.stdin.write(_PELLXY_GP + "\n")
-    p.stdin.write(f'print("{_BEGIN}");\n')
-    p.stdin.write("v=pellxy(46);print(v);print(v[1]^2-46*v[2]^2);\n")
-    p.stdin.write("vb=pellxy(46,100);print(vb);\n")
-    p.stdin.write(f'print("{_END}");\n')
+    p.stdin.write(_PELL_GP_SRC + "\n")
+    p.stdin.write(f'print("{_SENTINEL}_start");\n')
+    p.stdin.write("print(pellxy(46));\n")
+    p.stdin.write("v=pellxy(46); print(v[1]^2 - 46*v[2]^2);\n")
+    p.stdin.write("print(pellxy(46, 100));\n")
+    p.stdin.write(f'print("{_SENTINEL}_end");\n')
     p.stdin.flush()
 
-    buf, in_block = [], False
+    lines: List[str] = []
+    in_block = False
     while True:
         line = p.stdout.readline()
         if not line:
             raise RuntimeError("gp handshake EOF")
         s = line.strip()
-        if s == _BEGIN:
+        if s == f"{_SENTINEL}_start":
             in_block = True
             continue
-        if s == _END:
+        if s == f"{_SENTINEL}_end":
             break
         if in_block:
-            buf.append(s)
-
-    assert len(buf) >= 3, f"Unexpected GP handshake output: {buf}"
-    assert buf[1] == "1", f"Pell self-test failed: {buf}"
-    assert buf[2] == "[0, 0]", f"Bailout self-test failed: {buf}"
+            lines.append(s)
+    if len(lines) < 3 or lines[1] != "1" or lines[2].replace(" ", "") != "[0,0]":
+        raise RuntimeError(f"gp handshake failed: {lines}")
     return p
 
-def _gp_eval(expr: str, retries: int = 2, timeout: float = 300.0) -> str:
-    global _gp_proc
-    for attempt in range(retries + 1):
+
+def _gp_eval(expr: str) -> str:
+    """Persistent subprocess-gp fallback.  No per-call thread/timeout overhead."""
+    global _GP_PROC
+    if _GP_PROC is None:
+        _GP_PROC = _gp_start()
+    assert _GP_PROC.stdin and _GP_PROC.stdout
+    _GP_PROC.stdin.write(f'print("{_SENTINEL}_start");\n')
+    _GP_PROC.stdin.write(f"print({expr});\n")
+    _GP_PROC.stdin.write(f'print("{_SENTINEL}_end");\n')
+    _GP_PROC.stdin.flush()
+
+    lines: List[str] = []
+    in_block = False
+    while True:
+        line = _GP_PROC.stdout.readline()
+        if not line:
+            raise RuntimeError("gp EOF")
+        s = line.strip()
+        if s == f"{_SENTINEL}_start":
+            in_block = True
+            continue
+        if s == f"{_SENTINEL}_end":
+            break
+        if in_block:
+            lines.append(s)
+    return "\n".join(lines).strip()
+
+
+def _pell_fundamental(D: int, max_x: int = 0, retries: int = 2) -> Tuple[int, int]:
+    """Return fundamental (x1,y1), or (0,0) if max_x>0 and x1>max_x."""
+    if _PARI_SESSION is not None:
         try:
-            if _gp_proc is None:
-                _gp_proc = _gp_start()
-            p = _gp_proc
-            assert p.stdin and p.stdout
-
-            p.stdin.write(f'print("{_BEGIN}");\n{expr}\nprint("{_END}");\n')
-            p.stdin.flush()
-
-            def read_until_end() -> List[str]:
-                collected: List[str] = []
-                inside = False
-                while True:
-                    line = p.stdout.readline()
-                    if not line:
-                        raise RuntimeError("gp EOF")
-                    s = line.strip()
-                    if s == _BEGIN:
-                        inside = True
-                        continue
-                    if s == _END:
-                        return collected
-                    if inside:
-                        collected.append(s)
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                future = ex.submit(read_until_end)
-                try:
-                    parts = future.result(timeout=timeout)
-                except concurrent.futures.TimeoutError:
-                    _gp_kill()
-                    raise TimeoutError(f"gp timeout {timeout}s")
-
-            return "\n".join(parts)
-
-        except TimeoutError:
-            _gp_kill()
-            if attempt == retries:
-                raise
+            v = _PARI_SESSION(f"pellxy({D}, {max_x})") if max_x > 0 else _PARI_SESSION(f"pellxy({D})")
+            return int(v[0]), int(v[1])
         except Exception:
+            # Fall through to gp.  A single bad cypari2 call should not kill a run.
+            pass
+
+    last_exc: Optional[Exception] = None
+    for _ in range(retries + 1):
+        try:
+            expr = f"pellxy({D}, {max_x})" if max_x > 0 else f"pellxy({D})"
+            out = _gp_eval(expr)
+            if "***" in out or "error" in out.lower():
+                raise RuntimeError(f"gp error: {out[:200]}")
+            last = out.strip().splitlines()[-1]
+            m = _VEC2_RE.match(last)
+            if not m:
+                raise RuntimeError(f"Unexpected gp output: {out!r}")
+            return int(m.group(1)), int(m.group(2))
+        except Exception as e:
+            last_exc = e
             _gp_kill()
-            if attempt == retries:
-                raise
+    raise RuntimeError(f"Pell solver failed for D={D}: {last_exc!r}")
 
-    raise RuntimeError("unreachable in _gp_eval")
-
-def _pell_xy_gp(D: int, max_x: int = 0, timeout: float = 300.0) -> Tuple[int, int]:
-    arg = f", {max_x}" if max_x > 0 else ""
-    raw = _gp_eval(f"print(pellxy({D}{arg}));", timeout=timeout).strip().splitlines()[-1]
-    m = _VEC2_RE.match(raw)
-    if not m:
-        raise ValueError(f"Unexpected GP output: {raw!r}")
-    return int(m.group(1)), int(m.group(2))
 
 # ---------------------------------------------------------------------------
-# Core data structures
+# Per-process recurrence worker state
 # ---------------------------------------------------------------------------
+
+_S: Dict[str, Any] = {}
+
+
+def _worker_init(primes: Tuple[int, ...], gp_path: str, max_m: int, L_index: int,
+                 H: int, emit_d_rows: bool, quiet_pari: bool,
+                 slow_d_limit: int = 50, slow_d_min_sec: float = 0.0) -> None:
+    try:
+        sys.set_int_max_str_digits(0)
+    except Exception:
+        pass
+    _init_pari(gp_path, quiet=quiet_pari)
+
+    omega = len(primes)
+    low_count = omega - H
+    primes_low = primes[:low_count]
+    primes_high = primes[low_count:]
+    primes_mpz = [mpz(p) for p in primes]
+
+    if HAS_GMPY2:
+        remove_fn = gmpy2.remove  # type: ignore[name-defined]
+    else:
+        def remove_fn(n, p):  # type: ignore[misc]
+            k = 0
+            while n % p == 0:
+                n //= p
+                k += 1
+            return n, k
+
+    ONE = mpz(1)
+    full_mask = (1 << omega) - 1
+
+    def factor_smooth_mask(n) -> Tuple[bool, int]:
+        """Return (is P_omega-smooth, support mask) for n >= 1."""
+        if n < ONE:
+            return False, 0
+        support = 0
+        for i, p in enumerate(primes_mpz):
+            if n % p == 0:
+                support |= 1 << i
+                n, _ = remove_fn(n, p)
+                if n <= ONE:
+                    return True, support
+        return n == ONE, support
+
+    _S.clear()
+    _S.update({
+        "primes": primes,
+        "omega": omega,
+        "H": H,
+        "low_count": low_count,
+        "primes_low": primes_low,
+        "primes_high": primes_high,
+        "max_m": max_m,
+        "max_x": 2 * max_m + 1 if max_m > 0 else 0,
+        # Sharpened cap prefilter.  If m <= max_m and
+        # 4*m*(m+1) = D*y^2, then D is also the squarefree kernel of
+        # m*(m+1), hence D <= m*(m+1) <= max_m*(max_m+1).
+        "D_prefilter_T": max_m * (max_m + 1) if max_m > 0 else 0,
+        "L_index": L_index,
+        "ONE": ONE,
+        "full_mask": full_mask,
+        "factor_smooth_mask": factor_smooth_mask,
+        "emit_d_rows": emit_d_rows,
+        "slow_d_limit": slow_d_limit,
+        "slow_d_min_sec": slow_d_min_sec,
+    })
+
 
 @dataclass
-class MaskResult:
-    mask: int
+class DRow:
     D: int
-    excluded_empty: int
-    excluded_lambda: int
-    hits: int
-    open_count: int
-    hit_ms: List[int]
-    cert_rows: List[Dict[str, Any]]
-    elapsed_sec: float
-    gp_elapsed_sec: float = 0.0
-    excl_empty_by_prime: Dict[int, int] = field(default_factory=dict)
-    lambda_combined_vals: List[int] = field(default_factory=list)
-    worker_pid: int = 0
+    mask: int
+    status: str
+    x1_digits: int = 0
+    y1_digits: int = 0
+    y1_smooth: Optional[bool] = None
+    rank_R: int = 0
+    rank_missing_prime: int = 0
+    rank_multiples: int = 0
+    j_checked: int = 0
+    smooth_pairs: int = 0
+    hits: List[int] = field(default_factory=list)
+    error: str = ""
+    pell_sec: float = 0.0
+    total_sec: float = 0.0
 
-def _compute_period(state_seq: List[Tuple[int, int]]) -> int:
-    """True period of the Pell sequence mod p on the (x, y) state."""
-    target = state_seq[0]
-    for t in range(1, len(state_seq)):
-        if state_seq[t] == target:
-            return t
-    return len(state_seq)
 
-def process_mask(
-    omega: int,
-    mask: int,
-    primes: Tuple[int, ...],
-    L: int,
-    x1: int,
-    y1: int,
-    mode: str,
-    gp_elapsed: float = 0.0,
-) -> MaskResult:
-    """
-    Enumerate the seat systems for one vein D = D_from_mask(mask).
+@dataclass
+class BlockResult:
+    high_mask: int
+    n_d_run: int = 0
+    n_prefiltered: int = 0
+    n_cut_by_x: int = 0
+    n_gate_y1: int = 0
+    n_rank_missing: int = 0
+    n_rank_lcm_exceeds: int = 0
+    n_rank_survives: int = 0
+    n_rank_candidate_indices: int = 0
+    n_index_checked: int = 0
+    n_odd_x: int = 0
+    n_y_smooth_at_rank: int = 0
+    n_smooth_pairs: int = 0
+    n_hit_discriminants: int = 0
+    hit_values: List[int] = field(default_factory=list)
+    hit_records: List[Dict[str, Any]] = field(default_factory=list)
+    n_errors: int = 0
+    error_samples: List[str] = field(default_factory=list)
+    d_rows: List[DRow] = field(default_factory=list)
+    slow_d_rows: List[DRow] = field(default_factory=list)
+    elapsed_sec: float = 0.0
+    pell_sec: float = 0.0
+    rank_sec: float = 0.0
+    recurrence_sec: float = 0.0
 
-    sigma ranges over sigma_U: the unramified odd census primes (C2).
-    Ramified primes (p | D) and p = 2 are NOT in sigma_U; they divide m(m+1)
-    automatically and impose no index congruence.  An odd wheel order makes the
-    B side-set empty, so a sigma_U requesting side B there is EXCLUDED_EMPTY (C3).
-    """
-    t0 = time.time()
-    D = D_from_mask(mask, primes)
-    U = unramified_odd_primes(D, primes)   # sigma_U domain (C2)
-    k = len(U)
-
-    # Pell sequence mod p for each unramified odd prime; detect period (wheel order).
-    pell_seq_mod: Dict[int, List[int]] = {}
-    period_by_prime: Dict[int, int] = {}
-    for p in U:
-        x1p, y1p, Dp = x1 % p, y1 % p, D % p
-        xj, yj = x1p, y1p
-        seq: List[int] = []
-        states: List[Tuple[int, int]] = []
-        for _ in range(L):
-            seq.append(xj)
-            states.append((xj, yj))
-            nxj = (x1p * xj + Dp * y1p * yj) % p
-            nyj = (x1p * yj + y1p * xj) % p
-            xj, yj = nxj, nyj
-        pell_seq_mod[p] = seq
-        period_by_prime[p] = _compute_period(states)
-
-    # Seat sets, over j = 1..L.  s0 = side A (x == +1), s1 = side B (x == -1).
-    # If s1 is empty for some p, that p has odd wheel order: side B unavailable (C3).
-    side_sets: Dict[int, Tuple[Set[int], Set[int]]] = {}
-    for p in U:
-        seq = pell_seq_mod[p]
-        s0: Set[int] = {j + 1 for j, xj in enumerate(seq) if xj % p == 1}
-        s1: Set[int] = {j + 1 for j, xj in enumerate(seq) if xj % p == p - 1}
-        side_sets[p] = (s0, s1)
-
-    excl_empty = excl_lam = n_hits = n_open = 0
-    excl_empty_by_prime: Dict[int, int] = defaultdict(int)
-    hit_ms_set: Set[int] = set()
-    rows: List[Dict[str, Any]] = []
-    lambda_combined_vals: List[int] = []
-
-    # Enumerate ALL 2^k side assignments over sigma_U.  No sigma/sigma_bar halving
-    # (Step-0 Prop: index-side complementation is unsound).
-    for sig_int in range(1 << k):
-        sigma: Dict[int, int] = {p: (sig_int >> i) & 1 for i, p in enumerate(U)}
-
-        valid_js: Optional[Set[int]] = None
-        empty = False
-        triggering_prime: Optional[int] = None
-        lambda_combined = 1
-        for p in U:
-            js = side_sets[p][sigma[p]]
-            lambda_combined = lcm(lambda_combined, period_by_prime[p])
-            if not js:
-                empty = True
-                triggering_prime = p
-                break
-            valid_js = js if valid_js is None else valid_js & js
-            if not valid_js:
-                empty = True
-                triggering_prime = p
-                break
-
-        # No unramified odd primes (every odd census prime ramified): the seat
-        # system is vacuously satisfiable; all indices are candidates.
-        if valid_js is None and not empty:
-            valid_js = set(range(1, L + 1))
-
-        if empty or not valid_js:
-            if triggering_prime is not None:
-                excl_empty_by_prime[triggering_prime] += 1
-            rows.append({
-                "sigma": dict(sigma),
-                "lambda_val": None,
-                "lambda_combined": None,
-                "verdict": "EXCLUDED_EMPTY",
-                "hits": [],
-                "j_candidates": [],
-            })
-            excl_empty += 1
-            continue
-
-        js_in_L = sorted(j for j in valid_js if 1 <= j <= L)
-
-        if not js_in_L:
-            # Seat system solvable but no index within the proven ceiling.
-            # Sound exclusion under L = proven ceiling (C4).
-            rows.append({
-                "sigma": dict(sigma),
-                "lambda_val": min(valid_js),
-                "lambda_combined": lambda_combined,
-                "verdict": "EXCLUDED_LAMBDA",
-                "hits": [],
-                "j_candidates": [],
-            })
-            lambda_combined_vals.append(lambda_combined)
-            excl_lam += 1
-            continue
-
-        lambda_combined_vals.append(lambda_combined)
-
-        # Resolve every surviving index in big integers (both modes).
-        hits_here: List[int] = []
-        for j in js_in_L:
-            xj, _ = pell_power(x1, y1, D, j)
-            if xj % 2 == 0:
-                continue
-            m = (xj - 1) // 2
-            if m <= 0:
-                continue
-            if is_P_smooth(m, primes) and is_P_smooth(m + 1, primes):
-                f0, r0 = factor_over_P(m, primes)
-                f1, r1 = factor_over_P(m + 1, primes)
-                if r0 == 1 and r1 == 1:
-                    merged = {pp: f0.get(pp, 0) + f1.get(pp, 0)
-                              for pp in set(f0) | set(f1)}
-                    # prime-complete iff radical == P_omega
-                    if support_tuple(merged) == primes:
-                        hits_here.append(m)
-                        hit_ms_set.add(m)
-
-        verdict = "HIT" if hits_here else "CHECKED_NO_HIT"
-        n_hits += int(bool(hits_here))
-        n_open += int(not hits_here)
-        rows.append({
-            "sigma": dict(sigma),
-            "lambda_val": min(js_in_L),
-            "lambda_combined": lambda_combined,
-            "verdict": verdict,
-            "hits": hits_here,
-            "j_candidates": js_in_L,
-        })
-
-    return MaskResult(
-        mask=mask,
-        D=D,
-        excluded_empty=excl_empty,
-        excluded_lambda=excl_lam,
-        hits=n_hits,
-        open_count=n_open,
-        hit_ms=sorted(hit_ms_set),
-        cert_rows=rows,
-        elapsed_sec=time.time() - t0,
-        gp_elapsed_sec=gp_elapsed,
-        excl_empty_by_prime=dict(excl_empty_by_prime),
-        lambda_combined_vals=lambda_combined_vals,
-        worker_pid=os.getpid(),
-    )
 
 # ---------------------------------------------------------------------------
-# Worker
+# Recurrence engine
 # ---------------------------------------------------------------------------
 
-def _worker_init(gp_path_arg: str) -> None:
-    global _gp_path, _gp_proc
-    _gp_path = gp_path_arg
-    _gp_proc = None
-    atexit.register(_gp_kill)
-
-def _worker_task(args: Tuple) -> Tuple[str, Any]:
-    """
-    Returns (status, payload):
-      ('ok', MaskResult) | ('pruned', mask) | ('error', (mask, reason))
-    """
-    omega, mask, primes, L, mode, max_m, gp_timeout = args
-    D = D_from_mask(mask, primes)
-    gp_t0 = time.time()
+def _digits(n: int) -> int:
     try:
-        x_ceil = 2 * max_m + 1 if max_m > 0 else 0
-        x1, y1 = _pell_xy_gp(D, max_x=x_ceil, timeout=gp_timeout)
-        if (x1 == 0 and y1 == 0) or (x_ceil > 0 and x1 > x_ceil):
-            return ("pruned", mask)
-        # sanity: fundamental solution must satisfy the Pell identity
-        if x1 * x1 - D * y1 * y1 != 1:
-            return ("error", (mask, f"Pell identity failed D={D}"))
+        return len(str(n))
+    except ValueError:
+        return int(n.bit_length() * 0.30103) + 1
+
+
+def _record_d_row(br: BlockResult, row: DRow) -> None:
+    if _S.get("emit_d_rows", False):
+        br.d_rows.append(row)
+
+
+def _finalize_d_row(br: BlockResult, row: DRow, t_d0: float) -> None:
+    """Attach timing, emit the normal D-row if requested, and retain slow-D samples.
+
+    Slow-D retention is independent of the full D audit CSV.  Each worker keeps
+    only its local top N rows; the parent merges and truncates again.
+    """
+    row.total_sec = time.time() - t_d0
+    _record_d_row(br, row)
+    limit = int(_S.get("slow_d_limit", 0) or 0)
+    if limit <= 0:
+        return
+    min_sec = float(_S.get("slow_d_min_sec", 0.0) or 0.0)
+    if row.total_sec < min_sec:
+        return
+    br.slow_d_rows.append(row)
+    br.slow_d_rows.sort(key=lambda r: (r.total_sec, r.pell_sec), reverse=True)
+    del br.slow_d_rows[limit:]
+
+
+def _rank_mod_p(D: int, x1: int, y1: int, p: int, L_index: int) -> int:
+    """
+    Return rho_p(D) = min{j>=1: y_j == 0 mod p}, searched only up to L_index.
+    Return 0 if no such j occurs within the certified index window.
+
+    For p odd and p ∤ D, y_j == 0 mod p iff x_j == ±1 mod p, hence p divides
+    m_j(m_j+1).  The set of such j is exactly the multiples of rho_p.
+    """
+    x1p = x1 % p
+    y1p = y1 % p
+    Dp = D % p
+    xj = x1p
+    yj = y1p
+    for j in range(1, L_index + 1):
+        if yj == 0:
+            return j
+        nx = (x1p * xj + Dp * y1p * yj) % p
+        ny = (x1p * yj + y1p * xj) % p
+        xj, yj = nx, ny
+    return 0
+
+
+def _rank_lcm_for_D(D: int, mask_D: int, mask_y1: int, x1: int, y1: int,
+                    L_index: int) -> Tuple[int, int]:
+    """
+    Compute the LC rank-LCM obstruction for one vein.
+
+    Only unramified odd census primes p (p != 2 and p ∤ D) whose support is
+    not already supplied by y1 impose a nontrivial rank condition.  If p | y1,
+    then p | y_j for every Pell-Lucas y_j, so rho_p(D)=1 and the prime can be
+    skipped.  The remaining missing primes are processed from largest to
+    smallest as a safe pruning heuristic: larger primes tend to force larger
+    ranks, so the accumulated LCM often exceeds L_index earlier.
+
+    If any required p has no rank within j <= L, return (0, p).  Otherwise
+    return (R, 0), where every prime-complete index must be a multiple of R.
+    The computation stops as soon as the accumulated LCM exceeds L_index.
+    """
+    primes: Tuple[int, ...] = _S["primes"]
+    full_mask = int(_S["full_mask"])
+    need_mask = full_mask & ~(mask_D | mask_y1)
+
+    R = 1
+    needed_indices = [
+        i for i, p in enumerate(primes)
+        if p != 2 and ((need_mask >> i) & 1)
+    ]
+    needed_indices.sort(key=lambda i: primes[i], reverse=True)
+
+    for i in needed_indices:
+        p = primes[i]
+        rho = _rank_mod_p(D, x1, y1, p, L_index)
+        if rho == 0:
+            return 0, p
+        R = lcm_int(R, rho)
+        if R > L_index:
+            return R, 0
+    return R, 0
+
+
+def _pell_power_mpz(x1, y1, Dm, n: int):
+    """Return (x_n,y_n) = (x1+y1*sqrt(D))^n using binary exponentiation."""
+    xr = mpz(1)
+    yr = mpz(0)
+    xb = x1
+    yb = y1
+    while n:
+        if n & 1:
+            xr, yr = xr * xb + Dm * yr * yb, xr * yb + yr * xb
+        xb, yb = xb * xb + Dm * yb * yb, 2 * xb * yb
+        n >>= 1
+    return xr, yr
+
+
+def _process_D_recurrence(D: int, mask_D: int, br: BlockResult) -> None:
+    L_index = int(_S["L_index"])
+    max_x = int(_S["max_x"])
+    ONE = _S["ONE"]
+    full_mask = int(_S["full_mask"])
+    factor_smooth_mask = _S["factor_smooth_mask"]
+
+    br.n_d_run += 1
+    t_d0 = time.time()
+    row = DRow(D=D, mask=mask_D, status="START")
+
+    t_pell = time.time()
+    try:
+        x1, y1 = _pell_fundamental(D, max_x=max_x)
     except Exception as e:
-        return ("error", (mask, repr(e)))
-    gp_elapsed = time.time() - gp_t0
-    return ("ok", process_mask(omega, mask, primes, L, x1, y1, mode,
-                               gp_elapsed=gp_elapsed))
+        br.n_errors += 1
+        msg = f"D={D}: {e!r}"
+        if len(br.error_samples) < 20:
+            br.error_samples.append(msg)
+        row.status = "ERROR_PELL"
+        row.error = repr(e)
+        _finalize_d_row(br, row, t_d0)
+        return
+    finally:
+        pell_dt = time.time() - t_pell
+        br.pell_sec += pell_dt
+        row.pell_sec = pell_dt
+
+    if x1 == 0 and y1 == 0:
+        br.n_cut_by_x += 1
+        row.status = "CUT_BY_X_CAP"
+        _finalize_d_row(br, row, t_d0)
+        return
+
+    row.x1_digits = _digits(x1)
+    row.y1_digits = _digits(y1)
+
+    Dm = mpz(D)
+    x1m = mpz(x1)
+    y1m = mpz(y1)
+    if x1m * x1m - Dm * y1m * y1m != ONE:
+        br.n_errors += 1
+        msg = f"D={D}: Pell identity check failed"
+        if len(br.error_samples) < 20:
+            br.error_samples.append(msg)
+        row.status = "ERROR_IDENTITY"
+        row.error = msg
+        _finalize_d_row(br, row, t_d0)
+        return
+
+    sm_y1, mask_y1 = factor_smooth_mask(y1m)
+    row.y1_smooth = bool(sm_y1)
+    if not sm_y1:
+        # Lucas divisibility: y1 | y_j for every j.
+        br.n_gate_y1 += 1
+        row.status = "GATE_Y1_NOT_SMOOTH"
+        _finalize_d_row(br, row, t_d0)
+        return
+
+    # LC rank-LCM pruning.  For each unramified odd census prime p, p can occur
+    # in m_j(m_j+1) only when p | y_j, i.e. when j is a multiple of rho_p(D).
+    t_rank = time.time()
+    try:
+        R, missing_p = _rank_lcm_for_D(D, mask_D, int(mask_y1), x1, y1, L_index)
+    except Exception as e:
+        br.n_errors += 1
+        msg = f"D={D}: rank computation error {e!r}"
+        if len(br.error_samples) < 20:
+            br.error_samples.append(msg)
+        row.status = "ERROR_RANK"
+        row.error = repr(e)
+        _finalize_d_row(br, row, t_d0)
+        br.rank_sec += time.time() - t_rank
+        return
+    br.rank_sec += time.time() - t_rank
+
+    row.rank_R = int(R)
+    row.rank_missing_prime = int(missing_p)
+    if missing_p:
+        br.n_rank_missing += 1
+        row.status = "RANK_MISSING"
+        _finalize_d_row(br, row, t_d0)
+        return
+    if R <= 0:
+        br.n_errors += 1
+        msg = f"D={D}: invalid rank LCM R={R}"
+        if len(br.error_samples) < 20:
+            br.error_samples.append(msg)
+        row.status = "ERROR_RANK"
+        row.error = msg
+        _finalize_d_row(br, row, t_d0)
+        return
+    if R > L_index:
+        br.n_rank_lcm_exceeds += 1
+        row.status = "LCM_EXCEEDS_L"
+        _finalize_d_row(br, row, t_d0)
+        return
+
+    max_k = L_index // R
+    row.rank_multiples = max_k
+    br.n_rank_survives += 1
+    br.n_rank_candidate_indices += max_k
+
+    # Jump directly to j=R and then advance by R each step.  This avoids big-int
+    # expansion at indices that cannot possibly contain all missing primes.
+    local_smooth_pairs = 0
+    local_hits: List[int] = []
+
+    t_rec = time.time()
+    try:
+        x_step, y_step = _pell_power_mpz(x1m, y1m, Dm, R)
+        x = x_step
+        y = y_step
+        for k in range(1, max_k + 1):
+            j = k * R
+            if max_x and x > max_x:
+                break
+
+            br.n_index_checked += 1
+            row.j_checked += 1
+
+            sm_y, mask_y = factor_smooth_mask(y)
+            if sm_y:
+                br.n_y_smooth_at_rank += 1
+                if x & 1:
+                    br.n_odd_x += 1
+                    local_smooth_pairs += 1
+                    br.n_smooth_pairs += 1
+                    support = mask_D | mask_y
+                    if support == full_mask:
+                        m_val = (x - 1) >> 1
+                        if m_val > 0:
+                            m_int = int(m_val)
+                            local_hits.append(m_int)
+                            br.hit_values.append(m_int)
+                            br.hit_records.append({
+                                "m": m_int,
+                                "D": D,
+                                "mask": mask_D,
+                                "j": j,
+                                "rank_R": R,
+                                "x_digits": _digits(int(x)),
+                                "y_digits": _digits(int(y)),
+                            })
+
+            if k != max_k:
+                x, y = x_step * x + Dm * y_step * y, x_step * y + y_step * x
+    except Exception as e:
+        br.n_errors += 1
+        msg = f"D={D}: recurrence error {e!r}"
+        if len(br.error_samples) < 20:
+            br.error_samples.append(msg)
+        row.status = "ERROR_RECURRENCE"
+        row.error = repr(e)
+        _finalize_d_row(br, row, t_d0)
+        br.recurrence_sec += time.time() - t_rec
+        return
+
+    br.recurrence_sec += time.time() - t_rec
+    row.smooth_pairs = local_smooth_pairs
+    row.hits = local_hits
+    if local_hits:
+        br.n_hit_discriminants += 1
+        row.status = "HIT"
+    else:
+        row.status = "CHECKED_NO_HIT"
+    _finalize_d_row(br, row, t_d0)
+
+def _solver_block(high_mask: int) -> BlockResult:
+    t0 = time.time()
+    br = BlockResult(high_mask=high_mask)
+    try:
+        primes_low: Tuple[int, ...] = _S["primes_low"]
+        primes_high: Tuple[int, ...] = _S["primes_high"]
+        low_count = int(_S["low_count"])
+        T = int(_S["D_prefilter_T"])
+
+        base = 1
+        high_global_mask = 0
+        for i, p in enumerate(primes_high):
+            if (high_mask >> i) & 1:
+                base *= p
+                high_global_mask |= 1 << (low_count + i)
+
+        def run_D(D: int, mask_D: int) -> None:
+            _process_D_recurrence(D, mask_D, br)
+
+        if high_mask > 0 and T and base > T:
+            # All low subsets keep D >= base > T.  Empty-low included.
+            br.n_prefiltered += 1 << low_count
+        else:
+            if high_mask > 0:
+                run_D(base, high_global_mask)
+
+            def rec(i: int, prod: int, mask_prod: int) -> None:
+                for j in range(i, low_count):
+                    np_ = prod * primes_low[j]
+                    nm_ = mask_prod | (1 << j)
+                    if T and np_ > T:
+                        # All supersets produced by adding primes_low[j:] exceed T.
+                        br.n_prefiltered += (1 << (low_count - j)) - 1
+                        break
+                    run_D(np_, nm_)
+                    rec(j + 1, np_, nm_)
+
+            rec(0, base, high_global_mask)
+
+    except Exception as e:
+        br.n_errors += 1
+        if len(br.error_samples) < 20:
+            br.error_samples.append(f"block={high_mask}: {e!r}")
+    finally:
+        br.elapsed_sec = time.time() - t0
+    return br
+
 
 # ---------------------------------------------------------------------------
-# Checkpoint helpers
+# Checkpoints
 # ---------------------------------------------------------------------------
 
-def _checkpoint_path(omega_dir: str, omega: int) -> str:
-    return os.path.join(omega_dir, f"lc_checkpoint_omega_{omega:02d}.json")
+def _checkpoint_path(omega_dir: str, omega: int, H: int) -> str:
+    # H is part of the checkpoint identity.  A completed high_mask has a
+    # different meaning when H changes, so v6.1 deliberately does not reuse
+    # v6.0 checkpoints or checkpoints from a different split.
+    return os.path.join(omega_dir, f"lcm_v6_3_checkpoint_omega_{omega:02d}_H{H:02d}.json")
 
-def _load_checkpoint(omega_dir: str, omega: int) -> Set[int]:
-    cp = _checkpoint_path(omega_dir, omega)
+
+def _load_checkpoint(omega_dir: str, omega: int, H: int) -> Set[int]:
+    cp = _checkpoint_path(omega_dir, omega, H)
     if not os.path.exists(cp):
         return set()
     try:
         with open(cp) as fh:
             data = json.load(fh)
-        return set(data.get("completed_masks", []))
+        if int(data.get("H", -1)) != H or data.get("version") != PROGRAM_VERSION:
+            return set()
+        return set(int(x) for x in data.get("completed_high_masks", []))
     except Exception:
         return set()
 
-def _save_checkpoint(omega_dir: str, omega: int, completed: Set[int]) -> None:
-    cp = _checkpoint_path(omega_dir, omega)
+
+def _save_checkpoint(omega_dir: str, omega: int, H: int, completed: Set[int]) -> None:
+    cp = _checkpoint_path(omega_dir, omega, H)
     tmp = cp + ".tmp"
     with open(tmp, "w") as fh:
-        json.dump({"completed_masks": sorted(completed),
-                   "timestamp": utc_now_iso()}, fh)
+        json.dump({
+            "program": PROGRAM_NAME,
+            "version": PROGRAM_VERSION,
+            "omega": omega,
+            "H": H,
+            "completed_high_masks": sorted(completed),
+            "timestamp": utc_now_iso(),
+        }, fh, indent=2)
     os.replace(tmp, cp)
 
+
 # ---------------------------------------------------------------------------
-# Driver structures
+# Summary structures / writers
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -628,501 +935,653 @@ class OmegaSummary:
     omega: int
     pmax: int
     L: int
-    total_pairs: int
-    excluded_empty: int
-    excluded_lambda: int
+    H: int
+    block_log2: int
+    n_blocks: int
+    n_blocks_done: int
+    n_discriminants_expected: int
+    n_discriminants_run: int
+    n_prefiltered: int
+    n_cut_by_x: int
+    n_gate_y1: int
+    n_rank_missing: int
+    n_rank_lcm_exceeds: int
+    n_rank_survives: int
+    n_rank_candidate_indices: int
+    n_index_checked: int
+    n_odd_x: int
+    n_y_smooth_at_rank: int
+    n_smooth_pairs: int
     hits_total: int
-    open_total: int
     hit_values: List[int]
     elapsed_sec: float
     verdict: str
-    masks_per_sec: float = 0.0
     peak_rss_mb: float = 0.0
-    lambda_min: Optional[int] = None
-    lambda_max: Optional[int] = None
-    lambda_mean: Optional[float] = None
-    lambda_L_ratio_min: Optional[float] = None
-    lambda_L_ratio_max: Optional[float] = None
-    excl_empty_by_prime: Dict[int, int] = field(default_factory=dict)
-    total_gp_elapsed_sec: float = 0.0
-    total_mask_elapsed_sec: float = 0.0
-    error_masks: List[int] = field(default_factory=list)
-    pruned_masks: List[int] = field(default_factory=list)
+    blocks_per_sec: float = 0.0
+    discriminants_per_sec: float = 0.0
+    indices_per_sec: float = 0.0
+    total_pell_sec: float = 0.0
+    total_rank_sec: float = 0.0
+    total_recurrence_sec: float = 0.0
+    total_worker_elapsed_sec: float = 0.0
+    n_errors: int = 0
+    error_samples: List[str] = field(default_factory=list)
     self_test_ok: Optional[bool] = None
     self_test_detail: Optional[str] = None
+    accounting_ok: bool = False
+    hit_records: List[Dict[str, Any]] = field(default_factory=list)
+    d_csv_sha256: Optional[str] = None
+    hit_csv_sha256: Optional[str] = None
+    slow_d_csv_sha256: Optional[str] = None
+    slow_d_records: List[Dict[str, Any]] = field(default_factory=list)
 
-def _write_summary_json(omega: int, omega_dir: str, s: OmegaSummary,
-                        mode: str, cert_csv_sha: str) -> None:
-    summary_json = os.path.join(omega_dir, f"lc_summary_omega_{omega:02d}.json")
-    sd = {
-        "program": program_name,
-        "version": program_version,
-        "omega": omega,
+
+def _write_d_csv_header(writer: csv.writer) -> None:
+    writer.writerow([
+        "omega", "D", "mask", "status", "x1_digits", "y1_digits",
+        "y1_smooth", "rank_R", "rank_missing_prime", "rank_multiples",
+        "j_checked", "smooth_pairs", "hits", "pell_sec", "total_sec", "error",
+    ])
+
+
+def _write_d_row(writer: csv.writer, omega: int, row: DRow) -> None:
+    writer.writerow([
+        omega, row.D, row.mask, row.status, row.x1_digits, row.y1_digits,
+        "" if row.y1_smooth is None else int(bool(row.y1_smooth)),
+        row.rank_R, row.rank_missing_prime, row.rank_multiples,
+        row.j_checked, row.smooth_pairs,
+        ";".join(str(x) for x in row.hits),
+        f"{row.pell_sec:.6f}", f"{row.total_sec:.6f}", row.error,
+    ])
+
+
+def _slow_d_record(row: DRow) -> Dict[str, Any]:
+    return {
+        "D": row.D,
+        "mask": row.mask,
+        "status": row.status,
+        "total_sec": round(row.total_sec, 6),
+        "pell_sec": round(row.pell_sec, 6),
+        "x1_digits": row.x1_digits,
+        "y1_digits": row.y1_digits,
+        "y1_smooth": row.y1_smooth,
+        "rank_R": row.rank_R,
+        "rank_missing_prime": row.rank_missing_prime,
+        "rank_multiples": row.rank_multiples,
+        "j_checked": row.j_checked,
+        "smooth_pairs": row.smooth_pairs,
+        "hits": list(row.hits),
+        "error": row.error,
+    }
+
+
+def _write_slow_d_csv(path: str, omega: int, rows: List[DRow]) -> str:
+    with open(path, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow([
+            "omega", "rank", "D", "mask", "status", "total_sec", "pell_sec",
+            "x1_digits", "y1_digits", "y1_smooth", "rank_R",
+            "rank_missing_prime", "rank_multiples", "j_checked",
+            "smooth_pairs", "hits", "error",
+        ])
+        for i, row in enumerate(sorted(rows, key=lambda r: (r.total_sec, r.pell_sec), reverse=True), 1):
+            w.writerow([
+                omega, i, row.D, row.mask, row.status,
+                f"{row.total_sec:.6f}", f"{row.pell_sec:.6f}",
+                row.x1_digits, row.y1_digits,
+                "" if row.y1_smooth is None else int(bool(row.y1_smooth)),
+                row.rank_R, row.rank_missing_prime, row.rank_multiples,
+                row.j_checked, row.smooth_pairs,
+                ";".join(str(x) for x in row.hits), row.error,
+            ])
+    return sha256_file(path)
+
+
+def _write_hit_csv(path: str, omega: int, hit_records: List[Dict[str, Any]]) -> str:
+    with open(path, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["omega", "m", "m_plus_1", "D", "mask", "j", "rank_R", "x_digits", "y_digits"])
+        for rec in sorted(hit_records, key=lambda r: (r["m"], r["D"], r["j"])):
+            w.writerow([
+                omega, rec["m"], rec["m"] + 1, rec["D"], rec["mask"],
+                rec["j"], rec.get("rank_R", ""), rec["x_digits"], rec["y_digits"],
+            ])
+    return sha256_file(path)
+
+
+def _write_summary_json(omega_dir: str, s: OmegaSummary, args: argparse.Namespace) -> str:
+    path = os.path.join(omega_dir, f"lcm_v6_summary_omega_{s.omega:02d}.json")
+    data = {
+        "program": PROGRAM_NAME,
+        "version": PROGRAM_VERSION,
+        "engine": "rank_lcm_recurrence",
+        "omega": s.omega,
         "pmax": s.pmax,
         "L": s.L,
-        "mode": mode,
-        "total_pairs": s.total_pairs,
-        "excluded_empty": s.excluded_empty,
-        "excluded_lambda": s.excluded_lambda,
+        "H": s.H,
+        "block_log2": s.block_log2,
+        "scheduler": args.scheduler,
+        "min_blocks_per_worker": args.min_blocks_per_worker,
+        "max_low_bits": args.max_low_bits,
+        "n_blocks": s.n_blocks,
+        "n_blocks_done": s.n_blocks_done,
+        "n_discriminants_expected": s.n_discriminants_expected,
+        "n_discriminants_run": s.n_discriminants_run,
+        "n_prefiltered": s.n_prefiltered,
+        "n_cut_by_x": s.n_cut_by_x,
+        "n_gate_y1": s.n_gate_y1,
+        "n_rank_missing": s.n_rank_missing,
+        "n_rank_lcm_exceeds": s.n_rank_lcm_exceeds,
+        "n_rank_survives": s.n_rank_survives,
+        "n_rank_candidate_indices": s.n_rank_candidate_indices,
+        "n_index_checked": s.n_index_checked,
+        "n_odd_x": s.n_odd_x,
+        "n_y_smooth_at_rank": s.n_y_smooth_at_rank,
+        "n_smooth_pairs": s.n_smooth_pairs,
         "hits_total": s.hits_total,
-        "open_total": s.open_total,
         "hit_values": s.hit_values,
-        "elapsed_sec": round(s.elapsed_sec, 3),
-        "masks_per_sec": round(s.masks_per_sec, 4),
-        "peak_rss_mb": round(s.peak_rss_mb, 2),
-        "lambda_stats": {
-            "lambda_min": s.lambda_min,
-            "lambda_max": s.lambda_max,
-            "lambda_mean": round(s.lambda_mean, 2) if s.lambda_mean is not None else None,
-            "lambda_L_ratio_min": round(s.lambda_L_ratio_min, 4) if s.lambda_L_ratio_min is not None else None,
-            "lambda_L_ratio_max": round(s.lambda_L_ratio_max, 4) if s.lambda_L_ratio_max is not None else None,
-        },
-        "excl_empty_by_prime": {str(k): v for k, v in sorted(s.excl_empty_by_prime.items())},
-        "timing": {
-            "total_elapsed_sec": round(s.elapsed_sec, 3),
-            "total_gp_elapsed_sec": round(s.total_gp_elapsed_sec, 3),
-            "total_mask_elapsed_sec": round(s.total_mask_elapsed_sec, 3),
-        },
+        "hit_records": s.hit_records,
+        "slow_d_records": s.slow_d_records,
+        "slow_d_limit": args.slow_d_limit,
+        "slow_d_min_sec": args.slow_d_min_sec,
+        "accounting_ok": s.accounting_ok,
         "verdict": s.verdict,
-        "error_masks": s.error_masks,
-        "pruned_masks": s.pruned_masks,
+        "elapsed_sec": round(s.elapsed_sec, 3),
+        "rates": {
+            "blocks_per_sec": round(s.blocks_per_sec, 4),
+            "discriminants_per_sec": round(s.discriminants_per_sec, 4),
+            "indices_per_sec": round(s.indices_per_sec, 4),
+        },
+        "timing": {
+            "total_pell_sec": round(s.total_pell_sec, 3),
+            "total_rank_sec": round(getattr(s, "total_rank_sec", 0.0), 3),
+            "total_recurrence_sec": round(s.total_recurrence_sec, 3),
+            "total_worker_elapsed_sec": round(s.total_worker_elapsed_sec, 3),
+        },
+        "n_errors": s.n_errors,
+        "error_samples": s.error_samples[:20],
         "self_test_ok": s.self_test_ok,
         "self_test_detail": s.self_test_detail,
+        "d_csv_sha256": s.d_csv_sha256,
+        "hit_csv_sha256": s.hit_csv_sha256,
+        "slow_d_csv_sha256": s.slow_d_csv_sha256,
+        "max_m": 0 if args.max_m_expo == 0 else 10 ** args.max_m_expo,
+        "max_m_expo": args.max_m_expo,
+        "cypari2_available": HAS_CYPARI2,
+        "gmpy2_available": HAS_GMPY2,
+        "gp_path": args.gp_path,
+        "workers": args.workers,
+        "scheduler": args.scheduler,
+        "min_blocks_per_worker": args.min_blocks_per_worker,
+        "max_low_bits": args.max_low_bits,
+        "peak_rss_mb": round(s.peak_rss_mb, 2),
         "timestamp": utc_now_iso(),
-        "python_version": sys.version,
+        "python_version": sys.version.replace("\n", " "),
         "platform": platform.platform(),
-        "cert_csv_sha256": cert_csv_sha,
     }
-    with open(summary_json, "w") as fh:
-        json.dump(sd, fh, indent=2)
+    with open(path, "w") as fh:
+        json.dump(data, fh, indent=2)
+    return path
 
-def _cert_row_to_csv(row: Dict[str, Any], omega: int, L: int) -> List[Any]:
-    sigma_str = ",".join(f"p{p}:{sv}" for p, sv in sorted(row["sigma"].items()))
-    hits_str = ";".join(str(h) for h in row["hits"])
-    jc_str = ";".join(str(j) for j in row.get("j_candidates", []))
-    lv = row["lambda_val"]
-    lc = row.get("lambda_combined")
-    lambda_over_L = ""
-    if lc is not None and L > 0:
-        lambda_over_L = f"{lc / L:.4f}"
-    return [
-        omega, row["D"], row["mask"], sigma_str,
-        lv if lv is not None else "inf",
-        lc if lc is not None else "",
-        L, lambda_over_L,
-        row["verdict"], hits_str, jc_str,
-    ]
 
 # ---------------------------------------------------------------------------
-# Known-pair regression gate (C5)
+# Self-test / regression gate
 # ---------------------------------------------------------------------------
 
-def self_test_known_pairs(omega: int, gp_path: str, gp_timeout: float,
-                          L: int, verbose: bool = True) -> Tuple[bool, str]:
-    """
-    Re-derive, single-process and uncapped, every known prime-complete pair at
-    THIS omega level and assert the corrected pipeline recovers it.  Aborts the
-    certificate if any known pair is missed — exactly the check that would have
-    caught the v3.1 D=2q bug.
-    """
-    global _gp_path, _gp_proc
-    _gp_path = gp_path
-    _gp_proc = None
+def _scan_known_pairs_single_process(omega: int, gp_path: str, L: int,
+                                    max_m: int = 0) -> Tuple[Set[int], List[str]]:
+    """Small-omega single-process recurrence scan used by regression gate."""
+    primes = tuple(first_n_primes(omega))
+    _worker_init(primes, gp_path, max_m, L, H=0, emit_d_rows=False, quiet_pari=True,
+                 slow_d_limit=0, slow_d_min_sec=0.0)
+    br_total = BlockResult(high_mask=0)
+    errors: List[str] = []
+    for mask in range(1, 1 << omega):
+        D = D_from_mask(mask, primes)
+        br = BlockResult(high_mask=0)
+        _process_D_recurrence(D, mask, br)
+        br_total.hit_values.extend(br.hit_values)
+        if br.error_samples:
+            errors.extend(br.error_samples)
+    _gp_kill()
+    return set(br_total.hit_values), errors
 
+
+def self_test_known_pairs(omega: int, gp_path: str, L: int,
+                          verbose: bool = True) -> Tuple[bool, str]:
     expected = set(KNOWN_PRIME_COMPLETE.get(omega, []))
     if not expected:
         return True, f"no known pairs catalogued at omega={omega}; gate vacuous"
-
-    primes = tuple(first_n_primes(omega))
-    found: Set[int] = set()
-    for mask in range(1, 1 << omega):
-        D = D_from_mask(mask, primes)
-        try:
-            x1, y1 = _pell_xy_gp(D, max_x=0, timeout=gp_timeout)
-        except Exception as e:
-            return False, f"gp failure on D={D}: {e!r}"
-        if x1 == 0 and y1 == 0:
-            continue
-        res = process_mask(omega, mask, primes, L, x1, y1, "certify")
-        found.update(res.hit_ms)
-
+    found, errors = _scan_known_pairs_single_process(omega, gp_path, L)
     missing = expected - found
     extra = found - expected
-    ok = not missing
+    ok = (not missing) and (not errors)
     detail = (f"expected={sorted(expected)} found={sorted(found)} "
-              f"missing={sorted(missing)} extra={sorted(extra)}")
+              f"missing={sorted(missing)} extra={sorted(extra)} "
+              f"errors={errors[:3]}")
     if verbose:
-        status = "PASS" if ok else "FAIL"
-        print(f" [self_test omega={omega}] {status}: {detail}")
-    _gp_kill()
+        print(f" [self_test omega={omega}] {'PASS' if ok else 'FAIL'}: {detail}")
     return ok, detail
+
 
 # ---------------------------------------------------------------------------
 # run_omega
 # ---------------------------------------------------------------------------
 
-def run_omega(
-    omega: int,
-    mode: str,
-    outdir: str,
-    gp_path: str = "gp",
-    gp_timeout: float = 300.0,
-    workers: int = 1,
-    max_m: int = 0,
-    L_override: int = 0,
-    run_self_test: bool = True,
-    verbose: bool = True,
-    checkpoint: bool = True,
-) -> OmegaSummary:
+def run_omega(args: argparse.Namespace, omega: int, run_self_test: bool) -> OmegaSummary:
     t_start = time.time()
-    all_primes = tuple(first_n_primes(omega))
-    pmax = all_primes[-1]
-    L = L_override if L_override > 0 else proven_L(pmax)
+    primes = tuple(first_n_primes(omega))
+    pmax = primes[-1]
+    L_index = args.L_override if args.L_override > 0 else proven_L(pmax)
+    if args.mode == "certify" and args.L_override > 0 and args.L_override < proven_L(pmax):
+        raise RuntimeError(
+            f"certify mode refuses L_override={args.L_override}; proven L is {proven_L(pmax)}"
+        )
 
-    ensure_dir(outdir)
-    omega_dir = os.path.join(outdir, f"omega_{omega:02d}")
+    H = choose_high_bits(
+        omega, args.block_log2, args.workers,
+        min_blocks_per_worker=args.min_blocks_per_worker,
+        max_low_bits=args.max_low_bits,
+    )
+    n_mask_space = 1 << H
+    n_expected = (1 << omega) - 1
+    # If H == omega, each nonempty high_mask is one global D-mask task.
+    # The empty mask is not a valid discriminant and is not scheduled.
+    all_task_ids = list(range(1, n_mask_space)) if H == omega else list(range(n_mask_space))
+    n_blocks = len(all_task_ids)
+    max_m = 0 if args.max_m_expo == 0 else 10 ** args.max_m_expo
+
+    omega_dir = os.path.join(args.outdir, f"omega_{omega:02d}")
     ensure_dir(omega_dir)
 
-    # ---- C5: regression gate.  Mandatory in certify mode (unless overridden).
     self_test_ok: Optional[bool] = None
     self_test_detail: Optional[str] = None
     if run_self_test:
         self_test_ok, self_test_detail = self_test_known_pairs(
-            omega, gp_path, gp_timeout, L, verbose=verbose)
-        if mode == "certify" and not self_test_ok:
-            raise RuntimeError(
-                f"SELF-TEST FAILED at omega={omega}: the enumerator does not "
-                f"recover all known prime-complete pairs, so no certificate can "
-                f"be trusted. Detail: {self_test_detail}")
-
-    completed_masks: Set[int] = _load_checkpoint(omega_dir, omega) if checkpoint else set()
-    if completed_masks and verbose:
-        print(f" [checkpoint] Resuming omega={omega}: "
-              f"{len(completed_masks)} masks already done.")
-
-    # ---- C1: vein space = all nonempty submasks over ALL omega census primes.
-    # D = product of masked primes (squarefree by construction, > 1).  Order by
-    # popcount descending so the heaviest veins (most constrained) run first.
-    all_masks = sorted(
-        (mask for mask in range(1, 1 << omega)
-         if max_m == 0 or D_from_mask(mask, all_primes) <= 2 * max_m * (max_m + 1)),
-        key=lambda m: bin(m).count("1"),
-        reverse=True,
-    )
-
-    tasks: List[Tuple] = []
-    for mask in all_masks:
-        if mask in completed_masks:
-            continue
-        D = D_from_mask(mask, all_primes)
-        if max_m > 0 and D > 2 * max_m * (max_m + 1):
-            continue
-        tasks.append((omega, mask, all_primes, L, mode, max_m, gp_timeout))
-
-    if verbose:
-        print(
-            f"\n[LCm] omega={omega} P_omega={list(all_primes)} "
-            f"pmax={pmax} L={L} mode={mode} "
-            f"workers={workers} masks={len(tasks)} "
-            f"(+{len(completed_masks)} resumed)"
+            omega, args.gp_path, L_index, verbose=True
         )
+        if args.mode == "certify" and not self_test_ok:
+            raise RuntimeError(f"SELF-TEST FAILED at omega={omega}: {self_test_detail}")
 
-    # ---- Streaming certificate CSV: rows are written per-mask as results
-    # arrive, so memory stays O(workers) rather than O(total rows).  This is
-    # what makes high omega (e.g. ~2.6e8 rows at omega=18) feasible.
-    cert_csv = os.path.join(omega_dir, f"lc_certificates_omega_{omega:02d}.csv")
-    cert_fh = open(cert_csv, "w", newline="")
-    cert_writer = csv.writer(cert_fh)
-    cert_writer.writerow([
-        "omega", "D", "mask", "sigma_str",
-        "lambda_val", "lambda_combined", "L", "lambda_over_L",
-        "verdict", "hits", "j_candidates"
-    ])
+    completed: Set[int] = _load_checkpoint(omega_dir, omega, H) if not args.no_checkpoint else set()
+    valid_task_id_set = set(all_task_ids)
+    completed &= valid_task_id_set
+    block_ids = [hm for hm in all_task_ids if hm not in completed]
+    low_count_for_schedule = omega - H
+    primes_high_for_schedule = primes[low_count_for_schedule:]
+    if args.scheduler == "hard_first":
+        block_ids.sort(key=lambda hm: high_mask_sort_key(hm, primes_high_for_schedule), reverse=True)
+    elif args.scheduler == "light_first":
+        block_ids.sort(key=lambda hm: high_mask_sort_key(hm, primes_high_for_schedule))
 
-    total_rows = 0
-    all_hit_ms: Set[int] = set()
-    excl_empty = excl_lam = hits_total = open_total = 0
-    excl_empty_by_prime: Dict[int, int] = defaultdict(int)
-    lam_min: Optional[int] = None
-    lam_max: Optional[int] = None
-    lam_sum = 0
-    lam_count = 0
-    total_gp_elapsed = 0.0
-    total_mask_elapsed = 0.0
-    error_masks: List[int] = []
-    pruned_masks: List[int] = []
+    emit_d_rows = (args.d_csv_cutoff == 0 or omega <= args.d_csv_cutoff)
+    d_csv_path = os.path.join(omega_dir, f"lcm_v6_D_audit_omega_{omega:02d}.csv") if emit_d_rows else os.devnull
+    hit_csv_path = os.path.join(omega_dir, f"lcm_v6_hits_omega_{omega:02d}.csv")
+    slow_d_csv_path = os.path.join(omega_dir, f"lcm_v6_slow_D_omega_{omega:02d}.csv") if args.slow_d_limit > 0 else None
 
-    checkpoint_interval = max(50, len(tasks) // 20) if tasks else 50
+    d_fh = open(d_csv_path, "w", newline="")
+    d_writer = csv.writer(d_fh)
+    if emit_d_rows:
+        _write_d_csv_header(d_writer)
 
-    def _merge(r: MaskResult) -> None:
-        nonlocal excl_empty, excl_lam, hits_total, open_total
-        nonlocal total_gp_elapsed, total_mask_elapsed, total_rows
-        nonlocal lam_min, lam_max, lam_sum, lam_count
-        # stream rows
-        for row in r.cert_rows:
-            row["mask"] = r.mask
-            row["D"] = r.D
-            cert_writer.writerow(_cert_row_to_csv(row, omega, L))
-        total_rows += len(r.cert_rows)
-        all_hit_ms.update(r.hit_ms)
-        excl_empty += r.excluded_empty
-        excl_lam += r.excluded_lambda
-        hits_total += r.hits
-        open_total += r.open_count
-        total_gp_elapsed += r.gp_elapsed_sec
-        total_mask_elapsed += r.elapsed_sec
-        for v in r.lambda_combined_vals:
-            if v > 0:
-                lam_min = v if lam_min is None else min(lam_min, v)
-                lam_max = v if lam_max is None else max(lam_max, v)
-                lam_sum += v
-                lam_count += 1
-        for p, cnt in r.excl_empty_by_prime.items():
-            excl_empty_by_prime[p] += cnt
+    print(
+        f"\n[LCm v{PROGRAM_VERSION}] omega={omega} primes={list(primes)} pmax={pmax} L={L_index} "
+        f"mode={args.mode} workers={args.workers} H={H} low_bits={omega - H} "
+        f"blocks={len(block_ids)}/{n_blocks} block_log2={args.block_log2} "
+        f"scheduler={args.scheduler} d_csv={'on' if emit_d_rows else 'off'}"
+    )
+    if completed:
+        print(f" [checkpoint] Resuming with {len(completed)} completed high-mask blocks.")
 
-    if workers <= 1:
-        global _gp_path, _gp_proc
-        _gp_path = gp_path
-        _gp_proc = None
-        for i, task in enumerate(tasks):
-            status, payload = _worker_task(task)
-            if status == "pruned":
-                pruned_masks.append(int(payload))
-                continue
-            if status == "error":
-                mask, reason = payload
-                error_masks.append(int(mask))
-                if verbose:
-                    print(f"[omega={omega}] ERROR in mask {mask}: {reason}")
-                continue
-            if status != "ok":
-                continue
-            _merge(payload)
-            completed_masks.add(task[1])
-            if checkpoint and (i + 1) % checkpoint_interval == 0:
-                cert_fh.flush()
-                _save_checkpoint(omega_dir, omega, completed_masks)
+    totals = BlockResult(high_mask=-1)
+    hit_set: Set[int] = set()
+    completed_now: Set[int] = set(completed)
+    last_progress = time.time()
+    checkpoint_interval = max(1, len(block_ids) // 20) if block_ids else 1
+
+    def merge(br: BlockResult) -> None:
+        totals.n_d_run += br.n_d_run
+        totals.n_prefiltered += br.n_prefiltered
+        totals.n_cut_by_x += br.n_cut_by_x
+        totals.n_gate_y1 += br.n_gate_y1
+        totals.n_rank_missing += br.n_rank_missing
+        totals.n_rank_lcm_exceeds += br.n_rank_lcm_exceeds
+        totals.n_rank_survives += br.n_rank_survives
+        totals.n_rank_candidate_indices += br.n_rank_candidate_indices
+        totals.n_index_checked += br.n_index_checked
+        totals.n_odd_x += br.n_odd_x
+        totals.n_y_smooth_at_rank += br.n_y_smooth_at_rank
+        totals.n_smooth_pairs += br.n_smooth_pairs
+        totals.n_hit_discriminants += br.n_hit_discriminants
+        totals.n_errors += br.n_errors
+        totals.pell_sec += br.pell_sec
+        totals.rank_sec += br.rank_sec
+        totals.recurrence_sec += br.recurrence_sec
+        totals.elapsed_sec += br.elapsed_sec
+        if br.error_samples:
+            totals.error_samples.extend(br.error_samples[:max(0, 20 - len(totals.error_samples))])
+        if br.hit_values:
+            totals.hit_values.extend(br.hit_values)
+            hit_set.update(br.hit_values)
+        if br.hit_records:
+            totals.hit_records.extend(br.hit_records)
+        if br.slow_d_rows and args.slow_d_limit > 0:
+            totals.slow_d_rows.extend(br.slow_d_rows)
+            totals.slow_d_rows.sort(key=lambda r: (r.total_sec, r.pell_sec), reverse=True)
+            del totals.slow_d_rows[args.slow_d_limit:]
+        if emit_d_rows:
+            for row in br.d_rows:
+                _write_d_row(d_writer, omega, row)
+
+    if args.workers <= 1:
+        _worker_init(primes, args.gp_path, max_m, L_index, H, emit_d_rows, quiet_pari=False,
+                     slow_d_limit=args.slow_d_limit, slow_d_min_sec=args.slow_d_min_sec)
+        for done_count, hm in enumerate(block_ids, 1):
+            br = _solver_block(hm)
+            merge(br)
+            completed_now.add(hm)
+            if (not args.no_checkpoint) and (done_count % checkpoint_interval == 0):
+                d_fh.flush()
+                _save_checkpoint(omega_dir, omega, H, completed_now)
+            now = time.time()
+            if args.progress_interval > 0 and now - last_progress >= args.progress_interval:
+                print(
+                    f"  blocks={done_count:,}/{len(block_ids):,} D_run={totals.n_d_run:,} "
+                    f"gate_y1={totals.n_gate_y1:,} rank_dead={totals.n_rank_missing + totals.n_rank_lcm_exceeds:,} j_checked={totals.n_index_checked:,} "
+                    f"hits={len(hit_set)} elapsed={(now - t_start) / 60:.1f}min",
+                    flush=True,
+                )
+                last_progress = now
+        _gp_kill()
     else:
-        ctx = mp.get_context("spawn")
-        done = 0
-        with ctx.Pool(workers, initializer=_worker_init,
-                      initargs=(gp_path,)) as pool:
-            for status, payload in pool.imap_unordered(_worker_task, tasks,
-                                                       chunksize=1):
-                done += 1
-                if status == "pruned":
-                    pruned_masks.append(int(payload))
-                    continue
-                if status == "error":
-                    mask, reason = payload
-                    error_masks.append(int(mask))
-                    if verbose:
-                        print(f"[omega={omega}] ERROR in mask {mask}: {reason}")
-                    continue
-                if status != "ok":
-                    continue
-                _merge(payload)
-                completed_masks.add(payload.mask)
-                if checkpoint and done % checkpoint_interval == 0:
-                    cert_fh.flush()
-                    _save_checkpoint(omega_dir, omega, completed_masks)
+        ctx = mp.get_context("fork") if sys.platform == "darwin" else mp.get_context()
+        with ctx.Pool(
+            processes=args.workers,
+            initializer=_worker_init,
+            initargs=(primes, args.gp_path, max_m, L_index, H, emit_d_rows, False,
+                      args.slow_d_limit, args.slow_d_min_sec),
+        ) as pool:
+            for done_count, br in enumerate(pool.imap_unordered(_solver_block, block_ids, chunksize=1), 1):
+                merge(br)
+                completed_now.add(br.high_mask)
+                if (not args.no_checkpoint) and (done_count % checkpoint_interval == 0):
+                    d_fh.flush()
+                    _save_checkpoint(omega_dir, omega, H, completed_now)
+                now = time.time()
+                if args.progress_interval > 0 and now - last_progress >= args.progress_interval:
+                    print(
+                        f"  blocks={done_count:,}/{len(block_ids):,} D_run={totals.n_d_run:,} "
+                        f"gate_y1={totals.n_gate_y1:,} rank_dead={totals.n_rank_missing + totals.n_rank_lcm_exceeds:,} j_checked={totals.n_index_checked:,} "
+                        f"hits={len(hit_set)} elapsed={(now - t_start) / 60:.1f}min",
+                        flush=True,
+                    )
+                    last_progress = now
 
-    cert_fh.close()
+    d_fh.close()
+    if not args.no_checkpoint:
+        _save_checkpoint(omega_dir, omega, H, completed_now)
 
     elapsed = time.time() - t_start
-    hit_values = sorted(all_hit_ms)
-    rss = peak_rss_mb()
-    masks_processed = len(tasks)
+    d_csv_sha = sha256_file(d_csv_path) if emit_d_rows else None
+    hit_csv_sha = _write_hit_csv(hit_csv_path, omega, totals.hit_records)
+    slow_d_csv_sha = None
+    if slow_d_csv_path is not None:
+        slow_d_csv_sha = _write_slow_d_csv(slow_d_csv_path, omega, totals.slow_d_rows)
 
-    lam_mean = (lam_sum / lam_count) if lam_count else None
-    lam_L_min = (lam_min / L) if lam_min is not None else None
-    lam_L_max = (lam_max / L) if lam_max is not None else None
+    accounting_ok = (totals.n_d_run + totals.n_prefiltered == n_expected) and (len(completed_now) == n_blocks)
+    hit_values = sorted(hit_set)
+    hits_total = len(hit_values)
 
-    if error_masks:
+    if totals.n_errors:
         verdict = "INCOMPLETE_ERRORS"
-    elif hits_total > 0:
+    elif not accounting_ok:
+        verdict = "INCOMPLETE_ACCOUNTING"
+    elif hits_total:
         verdict = "COMPLETE_WITH_HITS"
     else:
         verdict = "COMPLETE_NO_HITS"
 
     summary = OmegaSummary(
-        omega=omega, pmax=pmax, L=L,
-        total_pairs=total_rows,
-        excluded_empty=excl_empty, excluded_lambda=excl_lam,
-        hits_total=hits_total, open_total=open_total,
-        hit_values=hit_values, elapsed_sec=elapsed, verdict=verdict,
-        masks_per_sec=masks_processed / elapsed if elapsed > 0 else 0.0,
-        peak_rss_mb=rss,
-        lambda_min=lam_min, lambda_max=lam_max, lambda_mean=lam_mean,
-        lambda_L_ratio_min=lam_L_min, lambda_L_ratio_max=lam_L_max,
-        excl_empty_by_prime=dict(excl_empty_by_prime),
-        total_gp_elapsed_sec=total_gp_elapsed,
-        total_mask_elapsed_sec=total_mask_elapsed,
-        error_masks=sorted(set(error_masks)),
-        pruned_masks=sorted(set(pruned_masks)),
+        omega=omega,
+        pmax=pmax,
+        L=L_index,
+        H=H,
+        block_log2=args.block_log2,
+        n_blocks=n_blocks,
+        n_blocks_done=len(completed_now),
+        n_discriminants_expected=n_expected,
+        n_discriminants_run=totals.n_d_run,
+        n_prefiltered=totals.n_prefiltered,
+        n_cut_by_x=totals.n_cut_by_x,
+        n_gate_y1=totals.n_gate_y1,
+        n_rank_missing=totals.n_rank_missing,
+        n_rank_lcm_exceeds=totals.n_rank_lcm_exceeds,
+        n_rank_survives=totals.n_rank_survives,
+        n_rank_candidate_indices=totals.n_rank_candidate_indices,
+        n_index_checked=totals.n_index_checked,
+        n_odd_x=totals.n_odd_x,
+        n_y_smooth_at_rank=totals.n_y_smooth_at_rank,
+        n_smooth_pairs=totals.n_smooth_pairs,
+        hits_total=hits_total,
+        hit_values=hit_values,
+        elapsed_sec=elapsed,
+        verdict=verdict,
+        peak_rss_mb=peak_rss_mb(),
+        blocks_per_sec=len(block_ids) / elapsed if elapsed > 0 else 0.0,
+        discriminants_per_sec=totals.n_d_run / elapsed if elapsed > 0 else 0.0,
+        indices_per_sec=totals.n_index_checked / elapsed if elapsed > 0 else 0.0,
+        total_pell_sec=totals.pell_sec,
+        total_rank_sec=totals.rank_sec,
+        total_recurrence_sec=totals.recurrence_sec,
+        total_worker_elapsed_sec=totals.elapsed_sec,
+        n_errors=totals.n_errors,
+        error_samples=totals.error_samples[:20],
         self_test_ok=self_test_ok,
         self_test_detail=self_test_detail,
+        accounting_ok=accounting_ok,
+        hit_records=sorted(totals.hit_records, key=lambda r: (r["m"], r["D"], r["j"])),
+        d_csv_sha256=d_csv_sha,
+        hit_csv_sha256=hit_csv_sha,
+        slow_d_csv_sha256=slow_d_csv_sha,
+        slow_d_records=[_slow_d_record(r) for r in sorted(totals.slow_d_rows, key=lambda r: (r.total_sec, r.pell_sec), reverse=True)],
     )
 
-    cert_sha = sha256_file(cert_csv)
-    _write_summary_json(omega, omega_dir, summary, mode, cert_sha)
-    if checkpoint:
-        _save_checkpoint(omega_dir, omega, completed_masks)
+    summary_path = _write_summary_json(omega_dir, summary, args)
 
-    if verbose:
-        print(f" excluded_empty={excl_empty} excluded_lambda={excl_lam} "
-              f"hits={hits_total} open={open_total} verdict={verdict}")
-        if elapsed > 0:
-            print(f" elapsed={elapsed:.1f}s masks/s={summary.masks_per_sec:.2f} "
-                  f"peak_rss={rss:.1f}MB gp_frac={total_gp_elapsed/elapsed:.2%}")
-        if lam_min is not None:
-            print(f" Lambda(D,sigma_U): min={lam_min} max={lam_max} "
-                  f"mean={lam_mean:.1f} Lambda/L: min={lam_L_min:.3f} max={lam_L_max:.3f}")
-        if excl_empty_by_prime:
-            top = sorted(excl_empty_by_prime.items(), key=lambda x: -x[1])[:5]
-            print(f" EXCLUDED_EMPTY top triggers: {top}")
-        print(f" --> {omega_dir}")
-        if hit_values:
-            print(f" HIT VALUES: {hit_values}")
+    print(
+        f" verdict={verdict} accounting_ok={accounting_ok} "
+        f"D_run={totals.n_d_run:,}/{n_expected:,} prefiltered={totals.n_prefiltered:,} "
+        f"gate_y1={totals.n_gate_y1:,} rank_dead={totals.n_rank_missing + totals.n_rank_lcm_exceeds:,} j_checked={totals.n_index_checked:,} "
+        f"smooth_pairs={totals.n_smooth_pairs:,} hits={hits_total}"
+    )
+    print(
+        f" elapsed={elapsed:.1f}s D/s={summary.discriminants_per_sec:.2f} "
+        f"j/s={summary.indices_per_sec:.2f} peak_rss={summary.peak_rss_mb:.1f}MB "
+        f"pell_worker_sec={summary.total_pell_sec:.1f} rank_worker_sec={summary.total_rank_sec:.1f} "
+        f"rec_worker_sec={summary.total_recurrence_sec:.1f}"
+    )
+    if hit_values:
+        print(f" HIT VALUES: {hit_values}")
+    if totals.error_samples:
+        print(f" ERROR SAMPLES: {totals.error_samples[:3]}")
+    print(f" summary --> {summary_path}")
+    if emit_d_rows:
+        print(f" D audit --> {d_csv_path}")
+    if slow_d_csv_path is not None:
+        print(f" slow-D audit --> {slow_d_csv_path}")
+    print(f" hits --> {hit_csv_path}")
 
     return summary
+
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    global _gp_path
-
     ap = argparse.ArgumentParser(
         prog="LCm_Solver",
-        description="Lehmer-Clements prime-complete enumerator v4 (corrected vein space).",
+        description="Lehmer-Clements prime-complete enumerator v6 rank-LCM recurrence engine.",
     )
     ap.add_argument("--mode", choices=["certify", "search"], default="search")
     ap.add_argument("--start_omega", type=int, default=2)
     ap.add_argument("--end_omega", type=int, default=9)
-    ap.add_argument("--outdir", default="lc_audit")
+    ap.add_argument("--outdir", default="lc_audit_v6")
     ap.add_argument("--gp_path", default="gp")
-    ap.add_argument("--gp_timeout", type=float, default=600.0)
-    ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 1)))
-    ap.add_argument("--max_m", type=int, default=0)
+    ap.add_argument("--workers", type=int, default=max(1, os.cpu_count() or 1))
+    ap.add_argument("--max_m_expo", type=int, default=0,
+                    help="If >0, cap search to m <= 10^expo. Certify mode refuses caps.")
     ap.add_argument("--L_override", type=int, default=0,
-                    help="Override index ceiling L (default: max(30, p_omega+1)). "
-                         "A certificate run must use at least the proven ceiling.")
+                    help="Override index ceiling L. Certify mode refuses values below proven L.")
+    ap.add_argument("--block_log2", type=int, default=8,
+                    help="Target log2 low-prime subsets per worker block before load-balance caps. v6.1 default is smaller than v6.0 to reduce tail latency.")
+    ap.add_argument("--min_blocks_per_worker", type=int, default=64,
+                    help="Load-balance floor: choose H so there are at least this many blocks per worker when possible.")
+    ap.add_argument("--max_low_bits", type=int, default=0,
+                    help="Load-balance cap. 0 means H=omega and schedules exactly one nonempty discriminant mask per task. 1 gives v6.2-style one-or-two-D microblocks.")
+    ap.add_argument("--scheduler", choices=["hard_first", "natural", "light_first"], default="hard_first",
+                    help="Order high-mask blocks. hard_first submits large/high-popcount blocks first to prevent tail stalls.")
+    ap.add_argument("--d_csv_cutoff", type=int, default=20,
+                    help="If 0 or omega<=cutoff, write one-row-per-D audit CSV; otherwise suppress it.")
+    ap.add_argument("--progress_interval", type=float, default=30.0,
+                    help="Seconds between progress lines; 0 disables progress lines.")
+    ap.add_argument("--slow_d_limit", type=int, default=50,
+                    help="Keep this many slowest discriminants in a separate slow-D audit CSV and summary JSON. Use 0 to disable.")
+    ap.add_argument("--slow_d_min_sec", type=float, default=0.0,
+                    help="Minimum per-D elapsed seconds required for inclusion in the slow-D audit.")
     ap.add_argument("--no_self_test", action="store_true",
-                    help="Skip the known-pair regression gate (NOT for certificates).")
+                    help="Skip known-pair regression gate. Not recommended for certificates.")
     ap.add_argument("--self_test_only", action="store_true",
-                    help="Run only the regression gate for the omega range and exit.")
+                    help="Run only the known-pair regression gate over the omega range.")
     ap.add_argument("--no_checkpoint", action="store_true")
     ap.add_argument("--version", action="store_true")
     args = ap.parse_args()
 
     if args.version:
         print(json.dumps({
-            "program": program_name,
-            "version": program_version,
+            "program": PROGRAM_NAME,
+            "version": PROGRAM_VERSION,
+            "cypari2_available": HAS_CYPARI2,
+            "gmpy2_available": HAS_GMPY2,
             "timestamp": utc_now_iso(),
         }, indent=2))
-        sys.exit(0)
+        return
 
-    if args.mode == "certify" and args.max_m > 0:
-        print("ERROR: certify mode refuses --max_m > 0 (soundness S6).")
+    if args.start_omega < 1 or args.end_omega < args.start_omega:
+        print("ERROR: invalid omega range")
         sys.exit(1)
-
-    _gp_path = args.gp_path
-
-    print(f"LCm_Solver v{program_version} -- "
-          f"Lehmer-Clements prime-complete enumerator (corrected vein space)")
-    print(f"Mode: {args.mode} omega: {args.start_omega}..{args.end_omega} "
-          f"outdir: {args.outdir} gp: {args.gp_path} workers: {args.workers} "
-          f"self_test: {not args.no_self_test} checkpoint: {not args.no_checkpoint}")
+    if args.mode == "certify" and args.max_m_expo > 0:
+        print("ERROR: certify mode refuses --max_m_expo > 0.")
+        sys.exit(1)
+    if args.block_log2 < 1:
+        print("ERROR: --block_log2 must be >= 1")
+        sys.exit(1)
+    if args.min_blocks_per_worker < 1:
+        print("ERROR: --min_blocks_per_worker must be >= 1")
+        sys.exit(1)
+    if args.max_low_bits < 0:
+        print("ERROR: --max_low_bits must be >= 0")
+        sys.exit(1)
+    if args.slow_d_limit < 0:
+        print("ERROR: --slow_d_limit must be >= 0")
+        sys.exit(1)
+    if args.slow_d_min_sec < 0:
+        print("ERROR: --slow_d_min_sec must be >= 0")
+        sys.exit(1)
 
     ensure_dir(args.outdir)
 
-    # ---- Full-catalogue gate.  In certify mode, before trusting ANY high-omega
-    # certificate, verify the corrected enumerator recovers EVERY known prime-
-    # complete pair across all catalogued levels (omega <= 8).  The per-omega
-    # gate inside run_omega is vacuous above omega=8 (no known pairs there), so
-    # this startup pass is what gives a high-omega certify run its teeth.  It is
-    # exactly the check that catches a v3.1-style vein-space regression.
-    if args.mode == "certify" and not args.no_self_test:
-        print("\n[gate] Full known-pair catalogue self-test (omega <= 8):")
-        gate_ok = True
-        for o in sorted(KNOWN_PRIME_COMPLETE):
-            pmax_o = first_n_primes(o)[-1]
-            L_o = args.L_override if args.L_override > 0 else proven_L(pmax_o)
-            ok, _ = self_test_known_pairs(o, args.gp_path, args.gp_timeout,
-                                          L_o, verbose=True)
-            gate_ok = gate_ok and ok
-        if not gate_ok:
-            print("ERROR: full-catalogue gate FAILED; refusing to emit a "
-                  "certificate. The enumerator does not recover all known "
-                  "prime-complete pairs.")
-            sys.exit(1)
-        print("[gate] PASS -- all 28 known prime-complete pairs recovered.\n")
+    print(f"{PROGRAM_NAME} v{PROGRAM_VERSION} rank-LCM recurrence engine")
+    print(
+        f"Mode: {args.mode} omega: {args.start_omega}..{args.end_omega} "
+        f"outdir: {args.outdir} gp: {args.gp_path} workers: {args.workers} "
+        f"scheduler: {args.scheduler} min_blocks_per_worker: {args.min_blocks_per_worker} max_low_bits: {args.max_low_bits} "
+        f"slow_d_limit: {args.slow_d_limit} slow_d_min_sec: {args.slow_d_min_sec} "
+        f"self_test: {not args.no_self_test} checkpoint: {not args.no_checkpoint} "
+        f"cypari2: {HAS_CYPARI2} gmpy2: {HAS_GMPY2}"
+    )
 
-    # ---- self_test_only fast path
     if args.self_test_only:
         all_ok = True
         for omega in range(args.start_omega, args.end_omega + 1):
             pmax = first_n_primes(omega)[-1]
             L = args.L_override if args.L_override > 0 else proven_L(pmax)
-            ok, detail = self_test_known_pairs(omega, args.gp_path,
-                                               args.gp_timeout, L, verbose=True)
+            ok, _detail = self_test_known_pairs(omega, args.gp_path, L, verbose=True)
             all_ok = all_ok and ok
         print("\n" + "=" * 60)
         print(f"SELF-TEST RESULT: {'ALL PASS' if all_ok else 'FAILURES PRESENT'}")
         print("=" * 60)
         sys.exit(0 if all_ok else 1)
 
-    all_summaries: List[OmegaSummary] = []
+    # Full-catalogue gate for certificates.  Above omega=8 the per-omega known
+    # catalogue is vacuous, so run all known levels before any certificate range.
+    full_gate_ok = True
+    if args.mode == "certify" and not args.no_self_test:
+        print("\n[gate] Full known-pair catalogue self-test (omega <= 8):")
+        for o in sorted(KNOWN_PRIME_COMPLETE):
+            pmax_o = first_n_primes(o)[-1]
+            L_o = args.L_override if args.L_override > 0 else proven_L(pmax_o)
+            ok, _detail = self_test_known_pairs(o, args.gp_path, L_o, verbose=True)
+            full_gate_ok = full_gate_ok and ok
+        if not full_gate_ok:
+            print("ERROR: full-catalogue gate FAILED; refusing certificate run.")
+            sys.exit(1)
+        print("[gate] PASS -- all 28 known prime-complete pairs recovered.\n")
+
+    summaries: List[OmegaSummary] = []
     any_hit = False
     any_errors = False
-
     for omega in range(args.start_omega, args.end_omega + 1):
         s = run_omega(
-            omega=omega, mode=args.mode, outdir=args.outdir,
-            gp_path=args.gp_path, gp_timeout=args.gp_timeout,
-            workers=args.workers, max_m=args.max_m,
-            L_override=args.L_override,
-            # Certify mode already ran the full-catalogue gate at startup;
-            # the per-omega gate is only useful for ad-hoc search runs.
-            run_self_test=(not args.no_self_test) and (args.mode != "certify"),
-            verbose=True, checkpoint=not args.no_checkpoint,
+            args,
+            omega,
+            run_self_test=(not args.no_self_test) and args.mode != "certify",
         )
-        all_summaries.append(s)
-        if s.hits_total > 0:
-            any_hit = True
-        if s.error_masks:
-            any_errors = True
+        summaries.append(s)
+        any_hit = any_hit or bool(s.hits_total)
+        any_errors = any_errors or bool(s.n_errors or not s.accounting_ok)
 
-    master_path = os.path.join(args.outdir, "lc_master_summary.json")
+    master_path = os.path.join(args.outdir, "lcm_v6_master_summary.json")
     master = {
-        "program": program_name,
-        "version": program_version,
+        "program": PROGRAM_NAME,
+        "version": PROGRAM_VERSION,
+        "engine": "rank_lcm_recurrence",
         "mode": args.mode,
         "start_omega": args.start_omega,
         "end_omega": args.end_omega,
         "workers": args.workers,
+        "block_log2": args.block_log2,
+        "scheduler": args.scheduler,
+        "min_blocks_per_worker": args.min_blocks_per_worker,
+        "max_low_bits": args.max_low_bits,
         "any_prime_complete_hit": any_hit,
-        "any_errors": any_errors,
-        "all_self_tests_ok": all(sv.self_test_ok is not False for sv in all_summaries),
+        "any_errors_or_incomplete": any_errors,
+        "full_catalogue_gate_ok": full_gate_ok,
         "per_omega": [
             {
-                "omega": sv.omega, "L": sv.L, "pmax": sv.pmax,
-                "total_pairs": sv.total_pairs,
-                "excluded_empty": sv.excluded_empty,
-                "excluded_lambda": sv.excluded_lambda,
-                "hits_total": sv.hits_total,
-                "open_total": sv.open_total,
-                "verdict": sv.verdict,
-                "hit_values": sv.hit_values,
-                "elapsed_sec": round(sv.elapsed_sec, 3),
-                "self_test_ok": sv.self_test_ok,
-                "error_masks": sv.error_masks,
-                "pruned_masks": sv.pruned_masks,
+                "omega": s.omega,
+                "pmax": s.pmax,
+                "L": s.L,
+                "H": s.H,
+                "n_blocks": s.n_blocks,
+                "n_discriminants_run": s.n_discriminants_run,
+                "n_prefiltered": s.n_prefiltered,
+                "n_gate_y1": s.n_gate_y1,
+                "n_rank_missing": s.n_rank_missing,
+                "n_rank_lcm_exceeds": s.n_rank_lcm_exceeds,
+                "n_rank_survives": s.n_rank_survives,
+                "n_rank_candidate_indices": s.n_rank_candidate_indices,
+                "n_index_checked": s.n_index_checked,
+                "n_y_smooth_at_rank": s.n_y_smooth_at_rank,
+                "n_smooth_pairs": s.n_smooth_pairs,
+                "hits_total": s.hits_total,
+                "hit_values": s.hit_values,
+                "verdict": s.verdict,
+                "accounting_ok": s.accounting_ok,
+                "n_errors": s.n_errors,
+                "elapsed_sec": round(s.elapsed_sec, 3),
             }
-            for sv in all_summaries
+            for s in summaries
         ],
         "timestamp": utc_now_iso(),
     }
@@ -1132,20 +1591,17 @@ def main() -> None:
     print("\n" + "=" * 60)
     print(f"MASTER RESULT: any_prime_complete_hit = {any_hit}")
     if any_errors:
-        print("WARNING: Some omegas have INCOMPLETE_ERRORS; see per-omega summaries.")
-    if not all(sv.self_test_ok is not False for sv in all_summaries):
-        print("WARNING: A regression gate FAILED; certificates are NOT valid.")
-    if not any_hit:
-        excl = sum(sv.excluded_lambda + sv.excluded_empty for sv in all_summaries)
-        print(f"All {excl:,} canonical (D, sigma_U) seat systems excluded or checked.")
-        print(f"Lehmer-Clements certificate (conditional on error-free, "
-              f"self-test-passed omegas): no prime-complete m(m+1) of order "
-              f"omega={args.start_omega}..{args.end_omega} exist "
-              f"(beyond the known catalogue).")
-    else:
-        print("Prime-complete hits found -- see per-omega summaries / hit_values.")
+        print("WARNING: errors or incomplete accounting occurred; see per-omega summaries.")
+    if not any_hit and not any_errors:
+        print(
+            "No prime-complete hits found in the requested omega range by the "
+            "rank-LCM recurrence engine, conditional on the stated index ceiling L."
+        )
+    elif any_hit:
+        print("Prime-complete hits found -- see per-omega summaries / hit CSVs.")
     print(f"Master summary --> {master_path}")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     atexit.register(_gp_kill)
