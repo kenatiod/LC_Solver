@@ -1,22 +1,39 @@
 # LC_Solver: Lehmer–Clements Enumerator for Prime‑Complete Products
 
+*Documentation for `LC_Solver.py`, version 6.6.*
+
+Throughout this document **LCM** / **lcm** always means *least common multiple*.
+The program's pruning engine is a **rank‑lcm engine**: it forms the least common
+multiple of certain ranks of apparition. The older name "LCm" that appears in some
+output filenames (e.g. `lcm_v6_summary_omega_NN.json`) is retained only for
+continuity of existing data files and does not denote anything other than this
+program.
+
+---
+
 ## 1. High‑level purpose
 
-`LC_Solver.py` implements the **Lehmer–Clements algorithm**, a specialised Størmer–Lehmer–style Pell enumerator designed to study **prime‑complete products of consecutive integers** of the form \(m(m+1)\) over a fixed initial prime set \(P_\omega = \{p_1,\dots,p_\omega\}\).[file:1]  
+`LC_Solver.py` implements the **Lehmer–Clements algorithm**, a specialised
+Størmer–Lehmer–style Pell enumerator designed to study **prime‑complete products
+of consecutive integers** of the form `m(m+1)` over a fixed initial prime set
+`P_ω = {p_1, …, p_ω}`.
 
-For each \(\omega\) in a user‑specified range, the program systematically explores all squarefree masks \(q\) over \(P_\omega\) and all side assignments \(\sigma : P_\omega \to \{0,1\}\).[file:1]  
+A positive integer is **prime‑complete** of order `ω` when its set of distinct
+prime divisors is exactly the first `ω` primes `{2, 3, 5, …, p_ω}` — an unbroken
+initial segment with no gaps. The known prime‑complete products `m(m+1)` are OEIS
+[A141399](https://oeis.org/A141399); the largest, and conjecturally the last, is
+`m = 633555` (order `ω = 8`).
 
-- A **prime‑complete hit** is an integer \(m > 0\) such that:
-  - both \(m\) and \(m+1\) are \(P_\omega\)-smooth, and  
-  - the product \(m(m+1)\) involves **exactly** the primes in \(P_\omega\) (no missing primes, no extra primes).[file:1]
+LC_Solver does two things:
 
-For each pair \((q,\sigma)\), LC_Solver either:
+- **Search mode** finds and reports every prime‑complete `m(m+1)` of a given
+  order, recovering the known A141399 values.
+- **Certify mode** proves, level by level, that *no* prime‑complete `m(m+1)`
+  exists at a given order beyond those already known — an unconditional statement
+  given the Størmer–Lehmer index bound.
 
-- **Certifies impossibility** of a prime‑complete hit up to the Størmer–Lehmer bound \(L_\omega = \max(3, p_\omega)\), or  
-- **Finds and records hits**, or  
-- In rare cases, declares the pair still **OPEN** (search mode) if \(\lambda \le L_\omega\) and the fused Pell loop produced no hit.[file:1]
-
-The program writes per‑\(\omega\) CSV and JSON certificate files plus a master summary that can be audited independently.
+It is the computational engine of the unconditional finite base of the
+termination argument for prime‑complete consecutive products.
 
 ---
 
@@ -24,290 +41,266 @@ The program writes per‑\(\omega\) CSV and JSON certificate files plus a master
 
 ### 2.1 Classical Størmer–Lehmer (for comparison)
 
-In the “classical” Nr_Solver‑style Størmer–Lehmer approach, one proceeds as follows for each squarefree mask \(q\) over \(P_\omega\):[file:1]
+By Størmer's theorem, every pair of consecutive `p_ω`‑smooth integers arises from
+a solution of a Pell equation. Writing `x = 2m + 1`, the pair `m(m+1)` satisfies
 
-1. Solve the Pell equation \(x^2 - 2q y^2 = 1\) and enumerate the Pell family
-   \[
-   m_j(q) = \frac{x_j - 1}{2}, \quad j = 1,\dots,L_\omega.
-   \]
-2. Filter these \(m_j\) by \(P_\omega\)‑smoothness of \(m_j(m_j+1)\).
-3. Filter the survivors by prime‑completeness \(\mathrm{rad}(m_j(m_j+1)) = p_\omega^\#\).[file:1]
+```
+x^2 − D y^2 = 1,     D | P_ω squarefree,
+```
 
-This works but does a lot of **redundant Pell iteration** where per‑prime divisibility conditions are obviously impossible.
+and the solutions are the powers `(x_1 + y_1 √D)^j` of the fundamental solution
+`(x_1, y_1)`. We write `(x_j, y_j)` for the `j`‑th power and `m_j = (x_j − 1)/2`.
+Lehmer's primitive‑divisor analysis bounds the relevant indices to
 
-### 2.2 Lehmer–Clements fusion
+```
+j ≤ L(ω) = max(30, p_ω + 1).
+```
 
-LC_Solver fuses the per‑prime conditions into the Pell iterate loop using periodicity modulo primes and the Chinese Remainder Theorem (CRT).[file:1]
+The classical enumeration tests every smooth pair at every admissible index. LC
+adds the prime‑completeness requirement directly, which lets most discriminants
+be discarded before any index is examined.
 
-For each prime \(p_i \in P_\omega\) and side \(\varepsilon \in \{0,1\}\):
+### 2.2 Lehmer–Clements fusion: the rank‑lcm engine
 
-- The Pell sequence \((x_j)\) modulo \(p_i\) is periodic with some period \(T_i(q)\).[file:1]  
-- The “entry set”
-  \[
-  E_i^{(\varepsilon)}(q) = \{ j \bmod T_i(q) : p_i \mid m_j(q) + \varepsilon \}
-  \]
-  is a union of residue classes modulo \(T_i(q)\).[file:1]
+A prime‑complete pair of order `ω` must be divisible by **every** prime
+`p_1, …, p_ω`. LC enforces this with two exact gates per squarefree discriminant
+`D | P_ω`. (The discriminant used internally is `D = 2q` for a squarefree mask
+product `q`; the description below is in terms of the effective `D`.)
 
-A **side assignment**
-\[
-\sigma : P_\omega \to \{0,1\}
-\]
-specifies for each prime whether it divides \(m\) or \(m+1\).[file:1]  
+**Gate 1 — y₁‑smoothness (Lucas divisibility).**
+In the Pell–Lucas sequence `y_1 | y_j` for every `j`. Hence if `y_1` is not
+`p_ω`‑smooth, no `y_j` is smooth, and `D` can produce no smooth pair at all. Such
+discriminants are discarded immediately. This gate removes the large majority of
+discriminants (for example, 128 443 of 131 071 at `ω = 17`).
 
-The CRT combines all per‑prime congruence conditions into:
+**Gate 2 — rank‑lcm (the Lehmer–Clements condition).**
+For an unramified odd prime `p ∤ D`, `p | y_j` **iff** `j` is a multiple of the
+**rank of apparition**
 
-- a **combined period** \(\Lambda(q,\sigma) = \mathrm{lcm}_{p_i \in P_\omega} T_i(q)\), and  
-- a **first compatible index** \(\lambda(q,\sigma)\), the smallest \(j \ge 1\) satisfying all per‑prime congruences simultaneously.[file:1]
+```
+ρ_p(D) = min { j ≥ 1 : p | y_j }.
+```
 
-The fused Pell loop then only has to examine Pell indices of the form
-\[
-j = \lambda, \lambda + \Lambda, \lambda + 2\Lambda, \dots
-\]
-up to the Størmer–Lehmer bound \(L_\omega\).[file:1]
+For the pair at index `j` to be prime‑complete, *every* prime `p ≤ p_ω` not
+already supplied by `D` or by `y_1` must divide `m_j(m_j+1)`. Therefore `j` must
+be a common multiple of all the required ranks, i.e. a multiple of their least
+common multiple
 
-**Key logical property:** if \(\lambda(q,\sigma) > L_\omega\), the loop body never runs. This is not merely a computational shortcut; it is a **certificate** that no prime‑complete hit can occur for that \((q,\sigma)\) up to the Størmer–Lehmer bound.[file:1]
+```
+R(D) = lcm { ρ_p(D) : p missing }.
+```
+
+Two outcomes prune `D` outright, with no index examined:
+
+- **rank_missing** — some required prime `p` has no rank within `j ≤ L` (its rank
+  of apparition does not occur in the admissible window); that prime can never
+  appear, so no prime‑complete pair exists for `D`.
+- **LCM_EXCEEDS_L** — `R(D) > L(ω)`; no admissible index is a multiple of `R(D)`,
+  so again no prime‑complete pair exists.
+
+Only when `R(D) ≤ L(ω)` does `D` **survive**, and then only the multiples
+`R(D), 2R(D), … ≤ L` need a full smoothness/completeness check. Missing primes are
+processed largest‑first, since large primes tend to force large ranks and trip the
+`R > L` cutoff early.
+
+**Key logical property.** Pruning a discriminant by `R(D) > L` is exactly pruning
+a branch of the search on which some required prime would necessarily have *zero*
+exponent — a gap. This is the precise arithmetic form of "do not descend into any
+branch that would leave a prime below the greatest prime factor missing."
 
 ---
 
 ## 3. What LC_Solver actually computes
 
-### 3.1 Masks, side assignments, and Pell data
+### 3.1 Discriminants and Pell data
 
-For a given \(\omega\):
+For a given `ω`, the prime set is `P_ω = (p_1, …, p_ω)`, with `pmax = p_ω` and the
+index bound `L = max(30, p_ω + 1)`. A **mask** is an integer `1 ≤ mask < 2^ω`
+whose 1‑bits select the primes whose product forms the squarefree `q`; the Pell
+discriminant is `D = 2q`. Fundamental solutions `(x_1, y_1)` to `x^2 − D y^2 = 1`
+are obtained from PARI/GP — in‑process through `cypari2` when available, otherwise
+through a persistent `gp` subprocess with a validated handshake. Because `D` is
+generated squarefree by construction, the Pell routine performs no internal
+factorization.
 
-- The prime set is \(P_\omega = (p_1,\dots,p_\omega)\) obtained by `first_n_primes(omega)`, with `pmax = p_omega` and `L = max(3, pmax)`.[file:1]
-- A **mask** is an integer \(1 \le \text{mask} < 2^\omega\).  
-  The function `q_from_mask(mask, primes)` multiplies the primes corresponding to 1‑bits of `mask` to obtain the squarefree \(q\).[file:1]
-- The Pell discriminant is \(D = 2q\).[file:1]
-- The program calls PARI/GP’s `pellxy(D, max_x)` to obtain the **fundamental Pell solution** \((x_1,y_1)\) to \(x^2 - D y^2 = 1\), via a robust subprocess handshake that validates a test case and supports optional `max_x` ceilings.[file:1]
+### 3.2 Ranks of apparition and the rank‑lcm
 
-For each prime \(p \in P_\omega\) and each side \(\varepsilon \in \{0,1\}\), the routine
-`compute_entry_period_and_residues(prime_p, side, x1, y1, D, max_period)`
-computes:
-
-- the period \(T\) of the Pell sequence modulo \(p\), and  
-- the list of residues \(j \in [1, T]\) where the side condition holds:  
-  - side \(= 0\): \(p \mid m_j\) ↔ \(x_j \equiv 1 \pmod p\)  
-  - side \(= 1\): \(p \mid m_j + 1\) ↔ \(x_j \equiv -1 \pmod p\).[file:1]
-
-These data are stored in `period_data[p] = (T0, r0, T1, r1)` for all primes in \(P_\omega\).[file:1]
-
-### 3.2 Computing \(\lambda\) and \(\Lambda\) for a given \((q,\sigma)\)
-
-Given `period_data` and a side assignment \(\sigma\), `compute_lambda_lambda(...)`:
-
-1. Chooses for each prime \(p\) either the “side 0” or “side 1” period and residue set based on `sigma[p]`.[file:1]  
-2. Populates dictionaries:
-   - `entry_periods[p] = T_p(q,σ(p))`
-   - `entry_residues[p] = [residues modulo T_p(q,σ(p))]`.[file:1]
-3. Declares the system **inconsistent** if any prime’s residue list is empty (i.e. the required side condition never occurs modulo \(p\)).[file:1]
-4. Computes
-   \[
-   \Lambda = \mathrm{lcm}\bigl( T_p(q, \sigma(p)) \bigr)
-   \]
-   using `lcm_list` over all populated `entry_periods`.[file:1]
-5. If not inconsistent, uses a product of CRT combinations over all primes and residue choices to find the minimal positive \(j\) satisfying all congruences simultaneously; this is \(\lambda(q,\sigma)\).[file:1]  
-   - CRT is implemented by `crt_combine` and `crt_system`, with explicit detection of inconsistent pairs and proper handling of moduli via gcd and modular inverses.[file:1]
-
-The function returns `(lambda_val, Lambda, entry_periods, entry_residues, inconsistent)`.[file:1]
+For each missing prime `p`, the rank `ρ_p(D)` is found by iterating the
+Pell–Lucas recurrence modulo `p` (in machine integers) up to `L`. The required
+ranks are combined into `R(D) = lcm{ ρ_p(D) }`, accumulated largest‑prime‑first so
+the `R > L` cutoff fires as early as possible. The result is one of the verdicts
+of §2.2 (`rank_missing`, `LCM_EXCEEDS_L`, or *survive*).
 
 ### 3.3 Certify mode
 
-In **certify mode** (`--mode certify`):
+In **certify mode** every squarefree `D | P_ω` is classified. Each `D` is sorted
+into exactly one bucket: prefiltered, removed by Gate 1, removed by Gate 2
+(`rank_missing` or `LCM_EXCEEDS_L`), or **survives** and has its admissible indices
+`R(D), 2R(D), … ≤ L` checked for an actual prime‑complete pair. The accounting is
+exact: every discriminant is accounted for. Certify mode refuses search caps and
+runs a regression self‑test (below) before the certificate range. The verdict is
+`COMPLETE_WITH_HITS` if any prime‑complete pair is found and `COMPLETE_NO_HITS`
+otherwise; either is unconditional given the index bound `L`.
 
-- For each mask \(q\) and each side assignment `sigma` over **all primes in \(P_\omega\)**, LC_Solver:
-  1. Precomputes `period_data` for all primes once.[file:1]
-  2. Calls `compute_lambda_lambda` to obtain \(\lambda(q,\sigma)\) and \(\Lambda(q,\sigma)\).[file:1]
-  3. Issues one of three verdicts:[file:1]
-     - `EXCLUDED_EMPTY`: at least one prime had no valid residues on its assigned side (CRT system empty).  
-     - `EXCLUDED_LAMBDA`: \(\lambda > L\) so no compatible Pell index is reachable before the Størmer–Lehmer bound.  
-     - `OPEN`: \(\lambda \le L\); computation stops here in certify mode, deferring full search to `--mode search`.
+### 3.4 Search mode
 
-Each such result is recorded in an `LCCertificate` dataclass instance with the following fields:[file:1]
-
-- `omega, q, mask, sigma`  
-- `entry_periods, entry_residues`  
-- `Lambda, lambda_val, L`  
-- `verdict ∈ {EXCLUDED_EMPTY, EXCLUDED_LAMBDA, OPEN}`  
-- `hits = []`, `loop_iterations = 0`, `elapsed_sec`.[file:1]
-
-### 3.4 Search mode (fused iterate loop)
-
-In **search mode** (`--mode search`) the program does everything certify mode does, *plus* a fused Pell iterate loop for `OPEN` pairs:[file:1]
-
-1. For each mask \(q\) and side assignment `sigma`, `compute_lambda_lambda` returns \(\lambda, \Lambda\) and consistency status.[file:1]
-2. If inconsistent or \(\lambda > L\), the same `EXCLUDED_EMPTY` / `EXCLUDED_LAMBDA` verdicts are issued. No loop runs.[file:1]
-3. If \(\lambda \le L\), LC_Solver:
-   - Computes the matrix
-     \[
-     M = \begin{pmatrix}x_1 & D y_1 \\ y_1 & x_1\end{pmatrix}
-     \]
-     and uses fast exponentiation (`mat_pow`) to get:
-       - `Ml = M^lambda` yielding \((x_\lambda, y_\lambda)\),
-       - `Ms = M^Lambda` as the “step” matrix to move from \(j\) to \(j+\Lambda\).[file:1]
-   - Starts from \((x_j,y_j) = (x_\lambda, y_\lambda)\) and repeatedly:
-     1. Checks if `xj` is odd and \(m = (x_j - 1)/2 > 0\).[file:1]
-     2. If a `max_m` bound is requested (`--max_m`), exits early if \(m > \text{max_m}\).[file:1]
-     3. Tests whether both \(m\) and \(m+1\) are \(P_\omega\)‑smooth using `is_P_smooth`.[file:1]
-     4. Factors \(m\) and \(m+1\) over \(P_\omega\) and ensures no leftover factor remains (i.e. both completely factor over \(P_\omega\)) using `factor_over_P`.[file:1]
-     5. Merges exponents and checks that the **support** (set of primes) of the combined factorization equals the whole `primes` tuple, certifying prime‑completeness via `support_tuple(merged) == primes`.[file:1]
-     6. Records any such `m` as a **HIT**.[file:1]
-   - Steps \((x_j,y_j)\) forward via `Ms` and increments `j` by \(\Lambda\) until \(j > L\).[file:1]
-
-The final verdict is:
-
-- `HIT` if at least one prime‑complete \(m\) was found;  
-- `OPEN` otherwise (consistent CRT system, \(\lambda \le L\), but no hit witnessed up to the bound).[file:1]
-
-These richer certificates record:
-
-- All fields from certify mode, plus:
-  - `hits` (list of hit values `m`),  
-  - `loop_iterations` (number of Pell loop iterations for this pair).[file:1]
+**Search mode** does everything certify mode does and, for surviving
+discriminants, runs the index check that records actual hits. For each admissible
+index `j` (a multiple of `R(D)` up to `L`) it forms `(x_j, y_j)` by fast matrix
+exponentiation of the Pell step matrix, takes `m = (x_j − 1)/2`, tests that both
+`m` and `m+1` are `P_ω`‑smooth, and confirms that the combined support of their
+factorizations is exactly `P_ω` (prime‑completeness). Any such `m` is recorded as
+a **hit**. Search mode optionally accepts an `m`‑cap for partial runs; certify
+mode does not.
 
 ---
 
-## 4. Program structure, outputs, and usage
+## 4. The collapse of the survivor set
 
-### 4.1 Top‑level driver per ω
+Beyond verification, the rank‑lcm engine exposes a striking empirical regularity.
+Let `S(ω)` be the number of discriminants that survive both gates (and therefore
+require an index check), and `C(ω)` the total indices then checked.
 
-The core driver `run_omega(...)`:
+| ω | total D = 2^ω − 1 | Gate 1 removed | survivors S(ω) | indices C(ω) | hits |
+|--:|------------------:|---------------:|---------------:|-------------:|-----:|
+|  8 |    255 |   112 | 71 | 236 | 1 (m = 633555) |
+|  9 |    511 |   287 | 66 | 194 | 0 |
+| 10 |   1023 |   695 | 53 | 114 | 0 |
+| 11 |   2047 |  1573 | 47 |  91 | 0 |
+| 12 |   4095 |  3442 | 30 |  51 | 0 |
+| 13 |   8191 |  7310 | 26 |  41 | 0 |
+| 14 |  16383 | 15198 |  9 |  11 | 0 |
+| 15 |  32767 | 31189 |  4 |  10 | 0 |
+| 16 |  65535 | 63491 |  3 |   3 | 0 |
+| 17 | 131071 | 128443 |  2 |   5 | 0 |
 
-- Sets `all_primes = first_n_primes(omega)`, `pmax = all_primes[-1]`, `L = max(3, pmax)`.[file:1]
-- Iterates over all masks `mask` in `[1, 2^omega)` and corresponding `q = q_from_mask(mask, all_primes)`, skipping the degenerate `q = 2` case.[file:1]
-- For each mask, obtains the fundamental Pell solution via `_pell_xy_gp(D)` once and dispatches to `lc_certify_one_mask` (certify mode) or `lc_search_one_mask` (search mode).[file:1]
-- Collects all `LCCertificate` objects, counts verdict categories (`excluded_empty`, `excluded_lambda`, `hits_total`, `open_total`), and aggregates distinct `hit_values`.[file:1]
+The survivor count `S(ω)` is **strictly decreasing** — 71, 66, 53, 47, 30, 26, 9,
+4, 3, 2 — with no reappearance, even though the total number of discriminants
+grows as `2^ω`. The survival **rate** `S(ω)/2^ω` falls from 0.28 at `ω = 8` to
+about `1.5 × 10⁻⁵` at `ω = 17`. A least‑squares fit over `ω = 8…16` gives
+`S(ω) ≈ exp(−0.42 ω + 8.1)`, a halving roughly every 1.6 levels; this fit,
+formed without the `ω = 17` point, predicts `S(17) ≈ 2.4` against the measured 2 —
+an out‑of‑sample confirmation.
 
-It then writes:
+In logarithms, per unit increase in `ω` the discriminant count contributes about
+`+0.69` to `log S` while the survival rate contributes about `−1.11`, for a net
+`−0.42`: **the rank‑lcm survival rate decays faster than the discriminant count
+grows.** Only `ω = 8` produces a smooth pair at all (the terminal 633555); every
+later level checked is empty.
 
-1. **Certificate CSV** `lc_certificates_omega_{omega:02d}.csv` in a per‑ω directory:
-   - One row per \((q,\sigma)\) pair.
-   - Columns include: `omega, q, mask, sigma_str, Lambda, lambda_val, L, verdict, hits, loop_iters, elapsed_sec, entry_periods, entry_residues`.[file:1]
-
-2. **Summary JSON** `lc_summary_omega_{omega:02d}.json`:
-   - Includes program metadata, counts of each verdict type, unique `hit_values`, elapsed time, and a `verdict` summarising the ω‑level state:
-     - `COMPLETE_NO_HITS`
-     - `COMPLETE_WITH_HITS`
-     - `PARTIAL` if any pair remains `OPEN`.[file:1]
-   - Includes a SHA‑256 hash of the certificate CSV for tamper detection.[file:1]
-
-### 4.2 Master summary and CLI usage
-
-The `main()` function:
-
-- Parses command‑line arguments (mode, ω‑range, outdir, gp_path, gp_timeout, max_m, max_period_factor, debug, assertions).[file:1]
-- Runs `run_omega(...)` for each `omega` in `[start_omega, end_omega]`.[file:1]
-- Generates a **master summary** JSON (`lc_master_summary.json`) with:
-  - Per‑ω summaries (`total_pairs`, verdict counts, `hit_values`, elapsed time).  
-  - A global `any_prime_complete_hit` flag.[file:1]
-- Prints a terminal summary with a strong **certificate statement** if no hits are found:
-  > All (q,σ) pairs excluded via EXCLUDED_EMPTY or EXCLUDED_LAMBDA.  
-  > Lehmer‑Clements certificate: no prime‑complete products m(m+1) of order ω = … exist.[file:1]
-
-Basic usage patterns (as documented in the file header):
-
-- **Certify + search (recommended):**
-  ```bash
-  python3 LC_Solver.py --mode search --start_omega 9 --end_omega 17 \
-      --outdir lc_audit --gp_path /opt/homebrew/bin/gp
-  ```
-- **Certify only (fast λ/Λ sweep, leaving OPEN pairs unresolved):**
-  ```bash
-  python3 LC_Solver.py --mode certify --start_omega 9 --end_omega 17 \
-      --outdir lc_audit --gp_path /opt/homebrew/bin/gp
-  ```
-- **High‑ω certificate generation:**
-  ```bash
-  python3 LC_Solver.py --mode certify --start_omega 18 --end_omega 30 \
-      --outdir lc_audit --gp_path /opt/homebrew/bin/gp
-  ```[file:1]
+This points to a combinatorial route to the termination theorem — a proof that
+`S(ω) = 0` for all `ω` beyond an explicit threshold, a statement about the
+distribution of ranks of apparition `ρ_p(D)` in Pell–Lucas sequences. The
+monotone decay is verified through `ω = 17`; it is strong evidence, not yet a
+proof. See `LehmerClements_note.pdf` for the formal treatment and the precise open
+conjecture.
 
 ---
 
-## 5. Why the results are trustworthy
+## 5. Program structure, outputs, and usage
 
-### 5.1 Mathematical soundness of the filtering logic
+### 5.1 Per‑ω driver and parallelism
 
-Several design choices make the certificates **logically derived** rather than empirically guessed:
+For each `ω`, work is split into high‑prime **mask blocks** distributed across
+worker processes; each worker generates and classifies its discriminants in
+place. A per‑ω summary JSON records the full pruning funnel (discriminants by
+gate, survivors, candidate indices, indices checked, hits), the verdict, and
+timing. Per‑discriminant audit CSVs are emitted for small `ω`.
 
-1. **Exact CRT treatment of per‑prime conditions.**  
-   The combination of `compute_entry_period_and_residues`, `crt_combine`, `crt_system`, and `first_positive_in_class` ensures that:
-   - Every per‑prime congruence condition is represented at the residue‑class level.  
-   - Inconsistent systems are explicitly detected and marked `EXCLUDED_EMPTY`.  
-   - The smallest global Pell index satisfying all congruences is correctly computed as \(\lambda\).[file:1]
+### 5.2 Checkpointing and resume
 
-2. **Global period and first index.**  
-   The algorithm uses the lcm of per‑prime periods (over **all** primes in \(P_\omega\)) to compute \(\Lambda\). The property “if \(\lambda > L\) then no hit up to \(L\)” follows directly from the combinatorial structure of the residue classes and does not depend on numerical accidents.[file:1]
+Long orders checkpoint periodically. The checkpoint stores **both** the set of
+completed mask‑blocks **and** the aggregated funnel statistics accumulated so far.
+On resume, the totals are seeded from the checkpoint so that a fully‑ or
+partially‑resumed order reports correct accounting and writes an accurate summary
+JSON. (Checkpoints are keyed by `ω` and the block split `H`, and by program
+version, so checkpoints from an incompatible split or version are ignored rather
+than misread.)
 
-3. **Complete enumeration of \((q,\sigma)\) pairs.**  
-   For each \(\omega\), the program iterates over:
-   - every nonzero mask \(q\) over \(P_\omega\) (excluding a single trivial `q = 2` case), and  
-   - every side assignment \(\sigma\) implemented as a bitmask over the primes.[file:1]  
-   This ensures no potential prime‑complete configuration is missed for the chosen \(\omega\)-range.
+### 5.3 Outputs
 
-4. **Exact arithmetic for smoothness and prime‑completeness.**  
-   Testing prime‑completeness uses:
-   - integer‑exact smoothness checks restricted to \(P_\omega\),  
-   - explicit factorization of \(m\) and \(m+1\) over \(P_\omega\), and  
-   - a support equality check to enforce that every prime in \(P_\omega\) appears and no extra primes appear.[file:1]  
-   No floating‑point or heuristic approximation is used in this core reasoning.
+| File (per ω) | Contents |
+|--------------|----------|
+| `lcm_v6_summary_omega_NN.json` | Funnel counts, survivors, indices, hits, verdict, timing |
+| `lcm_v6_D_audit_omega_NN.csv`  | Per‑discriminant audit (small ω) |
+| `lcm_v6_hits_omega_NN.csv`     | Prime‑complete pairs found |
+| `lcm_v6_slow_D_omega_NN.csv`   | Slowest discriminants (diagnostics) |
+| `lcm_v6_3_checkpoint_omega_NN_HNN.json` | Resume state (blocks + stats) |
+| `lcm_v6_master_summary.json`   | Combined summary across the ω range |
 
-### 5.2 Robustness of Pell computations
+(The `lcm_v6_` filename prefix is a historical artifact and, as noted at the top,
+does not denote "least common multiple"; LCM is reserved for that meaning in this
+documentation.)
 
-The Pell backbone is delegated to PARI/GP, but LC_Solver wraps it in a **defensive protocol**:[file:1]
+### 5.4 Command‑line usage
 
-- `_PELLXY_DEF` defines a pure‑GP implementation of `pellxy_cf` and `pellxy`, including handling of non‑fundamental discriminants and an internal correctness check \(a^2 - D y^2 = 1\).[file:1]
-- `_gp_start` launches gp with `-q`, sends the Pell code, and runs a **self‑test** on the discriminant \(D=46\), checking:
-  - that the solution satisfies the Pell equation, and  
-  - that a bailout call with a low `max_x` returns `[0, 0]` as expected.[file:1]
-- `_gp_eval` wraps all gp interaction with:
-  - a BEGIN/END marker protocol to delimit outputs,  
-  - a per‑call timeout,  
-  - automatic process restart if gp dies or misbehaves, and  
-  - a small retry budget.[file:1]
-- `_pell_xy_gp` parses the final line as a two‑integer vector and raises a structured error if the format is unexpected.[file:1]
+Search mode, recover all known pairs for ω = 2…8:
 
-In addition, Python’s `sys.set_int_max_str_digits(0)` is used when available to disable defensive digit limits, ensuring very large Pell solutions can be printed and parsed safely.[file:1]
+```bash
+python3 LC_Solver.py --mode search --start_omega 2 --end_omega 8 \
+  --outdir lc_audit_v6 --gp_path /opt/homebrew/bin/gp --workers 10
+```
 
-### 5.3 Fixes for subtle correctness issues (v2 notes)
+Certify mode, prove no solutions for ω = 9…20 (multi‑day at the top end):
 
-The header explicitly documents two nontrivial fixes that are incorporated into this version:[file:1]
+```bash
+python3 LC_Solver.py --mode certify --start_omega 9 --end_omega 20 \
+  --outdir lc_audit_v6 --gp_path /opt/homebrew/bin/gp --workers 10
+```
 
-1. **Bug 1 (KeyError in inconsistent CRT cases):**  
-   Earlier versions sometimes broke out of the “catch‑up” loop early in inconsistent situations, leaving `entry_periods` only partially populated; subsequent lcm calculations mistakenly expected entries for all primes in the catch‑up set.  
-   The current code:
-   - always fills `entry_periods` for all primes before computing `Lambda`, and  
-   - uses `lcm_list(list(entry_periods.values()))` so only actual entries are included.[file:1]
+Self‑test only, verify the engine against the known catalogue:
 
-2. **Bug 2 (OPEN ω=9 at 193280):**  
-   Considering only the “new primes” in a catch‑up block produced periods \(T_i\) too small to push \(\lambda\) beyond \(L_\omega\) for many pairs.  
-   The corrected algorithm uses **all primes in \(P_\omega\)** for the CRT period:
-   \[
-   \Lambda = \mathrm{lcm}(T_2,\dots,T_\omega),
-   \]
-   making \(\Lambda\) large enough that \(\lambda > L_\omega\) for all but a handful of \((q,\sigma)\) pairs, which are then fully handled by the fused search loop.[file:1]
+```bash
+python3 LC_Solver.py --self_test_only --start_omega 1 --end_omega 8
+```
 
-These fixes reduce the risk of spurious `OPEN` classifications and strengthen the certificate’s coverage.
-
-### 5.4 External verifiability
-
-The output is designed for independent checking:
-
-- Every \((q,\sigma)\) has a row in the per‑ω CSV, including the exact `entry_periods` and `entry_residues` for all primes.[file:1]
-- The JSON summaries contain enough metadata (program version, Python version, platform, timestamps, SHA‑256 hashes of CSVs) to support reproducibility and audit trails.[file:1]
-- A third party can:
-  - recompute Pell sequences modulo primes to verify `entry_periods` and `entry_residues`,  
-  - recompute CRT solutions to check \(\lambda\) and \(\Lambda\), and  
-  - re‑run the Pell iterate loop to confirm that no hits exist below \(L_\omega\) when the program claims `EXCLUDED_LAMBDA` or `EXCLUDED_EMPTY` for all pairs.
-
-In other words, LC_Solver is not just a search engine but a generator of **transparent, machine‑checkable certificates** for the non‑existence (or existence) of prime‑complete consecutive‑integer products for a given ω‑range.
+Run `python3 LC_Solver.py --version` to print the version and which accelerators
+(`cypari2`, `gmpy2`) are active.
 
 ---
 
-## 6. Practical notes for users
+## 6. Why the results are trustworthy
 
-- For research use, `--mode search` on a moderate ω‑range (e.g. 9–17) is the recommended default, as it both certifies exclusions and resolves all nontrivial `OPEN` pairs via the fused loop.[file:1]
-- For very large ω, `--mode certify` gives a fast λ/Λ sweep that already excludes the vast majority of pairs; one can then selectively revisit any remaining `OPEN` configurations if necessary.[file:1]
-- The output directory (`--outdir`) is structured by ω (`omega_XX` subdirectories) and contains everything needed for independent verification or further analysis.[file:1]
+### 6.1 Soundness of the pruning
+
+Both gates are exact necessary conditions. Gate 1 is Lucas divisibility
+(`y_1 | y_j`), so a non‑smooth `y_1` provably forbids any smooth `y_j`. Gate 2 is
+the rank condition: a missing prime divides `y_j` only at multiples of its rank,
+so a prime‑complete index must be a multiple of `R(D) = lcm{ρ_p(D)}`; if that
+exceeds `L`, no admissible index qualifies. A `COMPLETE_NO_HITS` verdict is
+therefore unconditional given the validity of the index ceiling `L = max(30,
+p_ω + 1)`.
+
+### 6.2 Self‑test gate
+
+Before any certificate range, certify mode runs a regression that re‑derives all
+28 catalogued prime‑complete pairs for `ω ≤ 8` (A141399) and aborts on any
+discrepancy. The reference runs recover `633555` at `ω = 8` and find nothing
+above.
+
+### 6.3 Exact accounting
+
+Every discriminant is classified into exactly one bucket, and the summary asserts
+`accounting_ok` only when the bucket counts reconcile with `2^ω − 1` and every
+mask‑block is marked complete. The checkpoint‑stats mechanism (§5.2) makes this
+accounting correct across interrupted and resumed runs.
+
+### 6.4 External verifiability
+
+Hits and the full funnel are written as plain JSON/CSV, and any reported pair can
+be checked independently by factoring `m` and `m+1`. The Pell fundamental
+solutions come from PARI/GP, an established computer‑algebra system.
+
+---
+
+## 7. Practical notes
+
+- PARI/GP is required (`brew install pari` on macOS, `apt-get install pari-gp` on
+  Debian/Ubuntu); `cypari2` and `gmpy2` are optional accelerators.
+- Run time rises steeply with `ω`: `ω = 16` decides in roughly 18 minutes and
+  `ω = 17` in about five hours on a single multi‑core host; higher orders are
+  multi‑day and benefit from checkpoint/resume.
+- For the termination program, certify mode is the relevant mode; search mode is
+  for recovering and auditing the known pairs.
 
 ## End of Document
