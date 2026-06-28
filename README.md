@@ -3,7 +3,7 @@
 **Lehmer-Clements enumerator for prime-complete products of consecutive integers**
 
 By Ken Clements · Lehmer-Clements algorithm first described: May 1, 2026
-· v6.4-prune (rank-LCM engine): June 2026
+· v6.6 (rank-LCM engine): June 2026
 
 ---
 
@@ -46,7 +46,7 @@ the Pell equation $x^2 - D y^2 = 1$ via $m_j = (x_j - 1)/2$, where $(x_j, y_j)$ 
 $j$-th power of the fundamental solution. Lehmer's primitive-divisor bound limits the
 relevant indices to $j \le L(\omega) = \max(30,\, p_\omega + 1)$.
 
-### The v6.4 rank-LCM engine
+### The v6.6 rank-LCM engine
 
 Version 6 replaces the explicit side-assignment ($\sigma$) enumeration of earlier versions
 with a **rank-of-apparition** condition that prunes whole discriminants with a single
@@ -125,13 +125,13 @@ this is strong evidence, not yet a proof.
 
 | File | Description |
 |------|-------------|
-| `LCm_Solver_v6_4_prune.py` | Current multiprocessing reference implementation (v6.4, rank-LCM engine) |
+| `LC_Solver.py` | Current multiprocessing reference implementation (v6.6, rank-LCM engine) |
 | `lcm_v6_summary_omega_*.json` | Per-order run summaries (discriminant counts by gate, survivors, indices, hits) |
 | `lcm_v6_master_summary.json` | Combined summary across an omega range |
 | `LehmerClements_note.pdf` | Formal write-up: pruning gates, soundness, and the survivor-collapse finding |
 
 Earlier single-process versions (`LC_Solver.py`, v3) remain in the history for reference;
-`LCm_Solver_v6_4_prune.py` is recommended for all runs.
+`LC_Solver.py` is recommended for all runs.
 
 ---
 
@@ -172,7 +172,7 @@ pip install cypari2 gmpy2
 ### Search mode — recover all prime-complete products for ω = 2..8
 
 ```bash
-python3 LCm_Solver_v6_4_prune.py \
+python3 LC_Solver.py \
   --mode search \
   --start_omega 2 \
   --end_omega 8 \
@@ -186,7 +186,7 @@ Expected output includes all 28 known A141399 values, with `633555` recovered at
 ### Certify mode — prove no solutions for ω = 9..17 (multiprocessing)
 
 ```bash
-python3 LCm_Solver_v6_4_prune.py \
+python3 LC_Solver.py \
   --mode certify \
   --start_omega 9 \
   --end_omega 17 \
@@ -203,7 +203,7 @@ with only three discriminants reaching an index check.
 ### Self-test only — verify the engine against the known catalogue
 
 ```bash
-python3 LCm_Solver_v6_4_prune.py --self_test_only --start_omega 1 --end_omega 8
+python3 LC_Solver.py --self_test_only --start_omega 1 --end_omega 8
 ```
 
 ---
@@ -263,4 +263,4 @@ See the repository for license details.
 
 If you use this software or its results, please cite the repository and the accompanying note,
 *The Lehmer-Clements enumerator: rank-LCM pruning for prime-complete consecutive pairs*
-(K. Clements, 2026).
+(Ken Clements, 2026).
