@@ -3,6 +3,7 @@
 **Lehmer-Clements enumerator for prime-complete products of consecutive integers**
 
 By Ken Clements · Lehmer-Clements algorithm first described: May 1, 2026
+· v6.4-prune (rank-LCM engine): June 2026
 
 ---
 
@@ -34,43 +35,89 @@ This program is part of an ongoing effort to prove that **no further terms exist
 
 The algorithm is a specialisation of the classical Størmer–Lehmer Pell enumeration that
 fuses the smoothness and prime-completeness checks directly into the Pell iterate loop.
+A prime-complete pair of order $\omega$ must be divisible by **every** prime
+$p_1, \ldots, p_\omega$. The Lehmer-Clements idea is to prune, as early as possible, any
+Pell family in which some required prime would necessarily have **zero exponent** — a gap.
+After $\omega = 6$ such gaps become unavoidable for most families, and the prunable
+fraction grows rapidly with $\omega$.
 
-For a fixed squarefree **mask** $q$ supported on $P_\omega = \{p_1, \ldots, p_\omega\}$,
-consecutive smooth candidates arise from the Pell equation $x^2 - 2qy^2 = 1$
-via $m_j = (x_j - 1)/2$. The key mathematical objects are:
+For a squarefree discriminant $D \mid P_\omega$, consecutive smooth candidates arise from
+the Pell equation $x^2 - D y^2 = 1$ via $m_j = (x_j - 1)/2$, where $(x_j, y_j)$ is the
+$j$-th power of the fundamental solution. Lehmer's primitive-divisor bound limits the
+relevant indices to $j \le L(\omega) = \max(30,\, p_\omega + 1)$.
+
+### The v6.4 rank-LCM engine
+
+Version 6 replaces the explicit side-assignment ($\sigma$) enumeration of earlier versions
+with a **rank-of-apparition** condition that prunes whole discriminants with a single
+LCM comparison. Two exact gates are applied to each $D$:
 
 | Symbol | Meaning |
 |--------|---------|
-| $T_p(q)$ | Period of the Pell sequence $x_j \bmod p$ |
-| $E_p^\varepsilon(q)$ | Indices $j \bmod T_p(q)$ where $p \mid m_j + \varepsilon$ |
-| $\sigma$ | Side assignment: each prime $p$ in $q$ gets $\sigma(p) \in \{0,1\}$ |
-| $\Lambda(q,\sigma)$ | $\mathrm{lcm}_{p \mid q}\, T_p(q)$ — combined CRT period |
-| $\lambda(q,\sigma)$ | Minimum $j \geq 1$ satisfying all entry conditions simultaneously (CRT) |
-| $L_\omega$ | Størmer–Lehmer bound: $\max(3,\, p_\omega)$ |
+| $(x_1, y_1)$ | Fundamental Pell solution for discriminant $D$ |
+| $\rho_p(D)$ | **Rank of apparition**: $\min\{j \ge 1 : p \mid y_j\}$ |
+| $R(D)$ | $\mathrm{lcm}\{\rho_p(D) : p \text{ missing from } D \text{ and } y_1\}$ |
+| $L(\omega)$ | Index ceiling $\max(30,\, p_\omega + 1)$ |
 
-**Key result:** If $\lambda(q,\sigma) > L_\omega$, the Pell family $(q, \sigma)$ contains
-no prime-complete candidate. The CRT computation delivers this verdict with a single
-arithmetic comparison — no candidate values need to be examined.
+**Gate 1 — $y_1$-smoothness (Lucas divisibility).**
+Since $y_1 \mid y_j$ for every $j$, if $y_1$ is not $p_\omega$-smooth then no $y_j$ is, and
+$D$ can produce no smooth pair. This removes the large majority of discriminants
+(e.g. 63,491 of 65,535 at $\omega = 16$).
 
-### Three algorithmic improvements over earlier versions
+**Gate 2 — rank-LCM (the Lehmer-Clements condition).**
+For an unramified odd prime $p \nmid D$, $p \mid y_j$ iff $j$ is a multiple of $\rho_p(D)$.
+For the pair to carry **all** missing primes, $j$ must be a common multiple of every
+required $\rho_p(D)$, hence a multiple of $R(D)$. Then:
 
-1. **3^ω work instead of 4^ω.**
-   Earlier versions iterated $\sigma$ over all $\omega$ primes ($2^\omega$ sigmas per
-   mask, $4^\omega$ total). Correct: $\sigma$ ranges only over the $k$ primes present
-   in mask $q$, giving $\sum_k \binom{\omega}{k} 2^k = 3^\omega$ total pairs — a
-   10× saving at $\omega = 8$.
+- if any required prime has no rank within $j \le L$, the prime can never appear — $D$ is dead;
+- if $R(D) > L(\omega)$, no admissible index is a multiple of $R(D)$ — no prime-complete pair exists;
+- otherwise $D$ **survives**, and only the multiples $R(D), 2R(D), \ldots \le L$ need a full check.
 
-2. **No matrix exponentiation.**
-   Earlier versions called `mat_pow` to reach index $\lambda$, which blows up for
-   large $\lambda$. Since $L_\omega \leq 59$ for all $\omega \leq 17$, iterating
-   $j = 1 \ldots L$ via the cheap two-term Pell recurrence
-   $(x,y) \to (x_1 x + D y_1 y,\; x_1 y + y_1 x)$
-   is sufficient and requires no big-integer exponentiation.
+**Key result:** If $R(D) > L(\omega)$, the discriminant $D$ contains no prime-complete
+candidate. The rank-LCM computation delivers this verdict with a single arithmetic
+comparison — no candidate values need to be examined. Pruning by $R > L$ is exactly
+pruning a branch on which some required prime would have zero exponent.
 
-3. **Canonical sigma halving.**
-   A side assignment $\sigma$ and its complement $\bar\sigma$ always identify the
-   same prime-complete $m$. By fixing $\sigma(p_{\min}) = 0$ as the canonical
-   representative, the effective search space is halved with no loss of coverage.
+A "certify" verdict is **unconditional given the index ceiling** $L(\omega)$: the rank-LCM
+condition is necessary for any prime-complete index, and all indices $\le L$ are exhausted.
+
+---
+
+## The collapsing search space
+
+The rank-LCM engine exposes a striking regularity. Let $S(\omega)$ be the number of
+discriminants that **survive both gates** (and therefore require a Pell index check), and
+$C(\omega)$ the total indices then checked. Measured values:
+
+| $\omega$ | total $D = 2^\omega - 1$ | survivors $S(\omega)$ | indices $C(\omega)$ | hits |
+|---------:|-------------------------:|----------------------:|--------------------:|-----:|
+|  8 |    255 | 71 | 236 | 1 (n = 633555) |
+|  9 |    511 | 66 | 194 | 0 |
+| 10 |   1023 | 53 | 114 | 0 |
+| 11 |   2047 | 47 |  91 | 0 |
+| 12 |   4095 | 30 |  51 | 0 |
+| 13 |   8191 | 26 |  41 | 0 |
+| 14 |  16383 |  9 |  11 | 0 |
+| 15 |  32767 |  4 |  10 | 0 |
+| 16 |  65535 |  3 |   3 | 0 |
+
+The survivor count $S(\omega)$ is **strictly decreasing** — 71, 66, 53, 47, 30, 26, 9, 4, 3 —
+with no reappearance, even though the total number of discriminants grows as $2^\omega$.
+The survival **rate** $S(\omega)/2^\omega$ falls from 0.28 at $\omega = 8$ to
+$4.6 \times 10^{-5}$ at $\omega = 16$. A fit gives $S(\omega) \approx \exp(-0.42\,\omega + 8.1)$,
+a halving roughly every 1.65 levels.
+
+In logarithmic terms, per unit increase in $\omega$ the discriminant count contributes
+$+\log 2 \approx +0.69$ while the survival rate contributes about $-1.11$, for a net
+$-0.42$: **the rank-LCM survival rate decays faster than the discriminant count grows.**
+Only $\omega = 8$ produces a smooth pair at all (the terminal 633555); every later level
+checked is empty.
+
+This points to a combinatorial route to the termination theorem: a bound showing
+$S(\omega) = 0$ for all $\omega$ beyond an explicit threshold — a statement about the
+distribution of ranks of apparition $\rho_p(D)$ in Pell–Lucas sequences. See
+`LehmerClements_note.pdf` for details. The monotone decay is verified through $\omega = 16$;
+this is strong evidence, not yet a proof.
 
 ---
 
@@ -78,11 +125,13 @@ arithmetic comparison — no candidate values need to be examined.
 
 | File | Description |
 |------|-------------|
-| `LC_Solver.py` | Single-process reference implementation (v3) |
-| `LCm_Solver.py` | Multiprocessing version — masks parallelised across CPU cores (v1) |
+| `LCm_Solver_v6_4_prune.py` | Current multiprocessing reference implementation (v6.4, rank-LCM engine) |
+| `lcm_v6_summary_omega_*.json` | Per-order run summaries (discriminant counts by gate, survivors, indices, hits) |
+| `lcm_v6_master_summary.json` | Combined summary across an omega range |
+| `LehmerClements_note.pdf` | Formal write-up: pruning gates, soundness, and the survivor-collapse finding |
 
-Both versions produce identical output and use the same certificate format.
-`LCm_Solver.py` is recommended for runs at $\omega \geq 12$.
+Earlier single-process versions (`LC_Solver.py`, v3) remain in the history for reference;
+`LCm_Solver_v6_4_prune.py` is recommended for all runs.
 
 ---
 
@@ -91,7 +140,9 @@ Both versions produce identical output and use the same certificate format.
 | Requirement | Notes |
 |-------------|-------|
 | Python 3.9+ | f-strings, `pow(a, -1, m)` modular inverse, dataclasses |
-| [PARI/GP](https://pari.math.u-bordeaux.fr/) | Used for Pell fundamental-solution computation |
+| [PARI/GP](https://pari.math.u-bordeaux.fr/) | Pell fundamental-solution computation |
+| `cypari2` *(optional)* | In-process PARI fast path; falls back to a persistent `gp` subprocess if absent |
+| `gmpy2` *(optional)* | Faster big-integer factor-removal in the smoothness check |
 
 ### Installing PARI/GP
 
@@ -107,231 +158,109 @@ sudo apt-get install pari-gp
 which gp          # typically /usr/bin/gp
 ```
 
-**Other platforms:** see https://pari.math.u-bordeaux.fr/download.html
+Optional accelerators:
+```bash
+pip install cypari2 gmpy2
+```
 
-No Python packages beyond the standard library are required.
+**Other platforms:** see https://pari.math.u-bordeaux.fr/download.html
 
 ---
 
 ## Quick Start
 
-### Search mode — find all prime-complete products for ω = 2..8
+### Search mode — recover all prime-complete products for ω = 2..8
 
 ```bash
-python3 LC_Solver.py \
+python3 LCm_Solver_v6_4_prune.py \
   --mode search \
   --start_omega 2 \
   --end_omega 8 \
-  --outdir lc_audit \
-  --gp_path /opt/homebrew/bin/gp
-```
-
-Expected output includes all 28 known A141399 values, one per HIT line.
-
-### Certify mode — prove no solutions for ω = 9..17 (multiprocessing)
-
-```bash
-python3 LCm_Solver.py \
-  --mode certify \
-  --start_omega 9 \
-  --end_omega 17 \
-  --outdir lc_audit \
+  --outdir lc_audit_v6 \
   --gp_path /opt/homebrew/bin/gp \
   --workers 10
 ```
 
-On a 10-core Mac mini M-series this completes in under five hours and writes
-`COMPLETE_NO_HITS` verdicts for every ω in the range. Users may notice a
-considerable pause at the last mask count of each ω section as the last
-worker thread processes the remaining masks alone.
+Expected output includes all 28 known A141399 values, with `633555` recovered at ω = 8.
+
+### Certify mode — prove no solutions for ω = 9..17 (multiprocessing)
+
+```bash
+python3 LCm_Solver_v6_4_prune.py \
+  --mode certify \
+  --start_omega 9 \
+  --end_omega 17 \
+  --outdir lc_audit_v6 \
+  --gp_path /opt/homebrew/bin/gp \
+  --workers 10
+```
+
+Certify mode refuses search caps and runs the full A141399 self-test gate (ω ≤ 8) before
+the certificate range. Each ω writes a `COMPLETE_NO_HITS` verdict and a summary JSON.
+The per-ω run time rises with ω; ω = 16 decides in roughly 18 minutes on a 10-core host,
+with only three discriminants reaching an index check.
+
+### Self-test only — verify the engine against the known catalogue
+
+```bash
+python3 LCm_Solver_v6_4_prune.py --self_test_only --start_omega 1 --end_omega 8
+```
 
 ---
 
 ## Command-Line Reference
 
-All options apply to both `LC_Solver.py` and `LCm_Solver.py`.
-`--workers` is available only in `LCm_Solver.py`.
-
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--mode` | `search` | `search`: find hits and record candidates; `certify`: classify all pairs without iterating candidates |
-| `--start_omega` | `9` | First $\omega$ to process (inclusive) |
-| `--end_omega` | `17` | Last $\omega$ to process (inclusive) |
-| `--outdir` | `lc_audit` | Output directory for certificates and summaries |
-| `--gp_path` | `gp` | Path to the `gp` binary |
-| `--gp_timeout` | `300.0` | Seconds to wait for a single PARI/GP call |
-| `--max_m` | `0` (unlimited) | Stop searching above this value of $m$ |
-| `--max_period_factor` | `4` | Search window for entry-period computation: $4(p-1)$ |
-| `--workers` | `1` | *(LCm only)* Number of parallel worker processes |
-| `--debug` | off | Enable verbose debug output |
-| `--version` | — | Print version JSON and exit |
+| `--mode` | `search` | `search`: record hits; `certify`: classify all discriminants, refuse caps |
+| `--start_omega` | `2` | First $\omega$ to process (inclusive) |
+| `--end_omega` | `9` | Last $\omega$ to process (inclusive) |
+| `--outdir` | `lc_audit_v6` | Output directory for summaries and audit CSVs |
+| `--gp_path` | `gp` | Path to the PARI/GP binary |
+| `--workers` | all cores | Number of worker processes |
+| `--max_m_expo` | `0` | If > 0, cap search to $m \le 10^{\text{expo}}$ (search mode only; certify refuses) |
+| `--L_override` | `0` | Override the index ceiling $L$ (certify refuses values below the proven $L$) |
+| `--max_low_bits` | `0` | Load-balance granularity; 0 schedules one discriminant mask per task |
+| `--scheduler` | `hard_first` | Block order: `hard_first` submits heavy blocks first to reduce tail stalls |
+| `--d_csv_cutoff` | `20` | Emit per-discriminant audit CSV when $\omega \le$ this value |
+| `--slow_d_limit` | `50` | Retain this many slowest discriminants in a separate audit |
+| `--no_self_test` | off | Skip the known-pair regression gate (not recommended) |
+| `--self_test_only` | off | Run only the known-pair regression gate |
+| `--version` | — | Print version and accelerator availability, then exit |
 
 ---
 
-## Output Structure
-
-```
-lc_audit/
-├── lc_master_summary.json          ← top-level verdict across all ω
-└── omega_09/
-    ├── lc_certificates_omega_09.csv   ← one row per canonical (q,σ) pair
-    └── lc_summary_omega_09.json       ← per-ω counts and SHA-256 of CSV
-```
-
-### Master summary (`lc_master_summary.json`)
-
-```json
-{
-  "program": "LCm_Solver",
-  "version": 1,
-  "mode": "certify",
-  "start_omega": 9,
-  "end_omega": 17,
-  "any_prime_complete_hit": false,
-  "per_omega": [
-    {
-      "omega": 9,
-      "L": 23,
-      "total_pairs": 4374,
-      "excluded_empty": 2187,
-      "excluded_lambda": 2187,
-      "hits_total": 0,
-      "open_total": 0,
-      "verdict": "COMPLETE_NO_HITS",
-      "elapsed_sec": 12.4
-    }
-  ]
-}
-```
-
-### Certificate CSV columns
-
-| Column | Description |
-|--------|-------------|
-| `omega` | Prime-set order |
-| `q` | Squarefree mask value (product of primes in mask) |
-| `mask` | Bitmask index into $P_\omega$ |
-| `sigma_str` | Side assignment, e.g. `p2:0,p3:1,p5:0` |
-| `Lambda` | CRT period $\Lambda(q,\sigma)$ |
-| `lambda_val` | First simultaneous-entry index $\lambda(q,\sigma)$, or `inf` |
-| `L` | Størmer–Lehmer bound |
-| `verdict` | `EXCLUDED_EMPTY`, `EXCLUDED_LAMBDA`, `HIT`, or `OPEN` |
-| `hits` | Semicolon-separated list of prime-complete $m$ values found |
-| `loop_iters` | Number of Pell iterates examined |
-| `entry_periods` | Per-prime entry periods $T_p$ |
-| `entry_residues` | Per-prime entry residue sets |
-
-### Verdict meanings
+## Verdict semantics
 
 | Verdict | Meaning |
 |---------|---------|
-| `EXCLUDED_EMPTY` | CRT system is inconsistent — no index $j$ satisfies all conditions |
-| `EXCLUDED_LAMBDA` | First valid index $\lambda > L$ — outside the Størmer–Lehmer range |
-| `HIT` | One or more prime-complete $m$ values found in $[1, L]$ |
-| `OPEN` | A valid index $\lambda \leq L$ exists but the candidate is not prime-complete |
+| `COMPLETE_WITH_HITS` | All discriminants classified; one or more prime-complete pairs found |
+| `COMPLETE_NO_HITS` | All discriminants classified; no prime-complete pair exists at this ω (given $L$) |
 
-A complete certificate for a range $[\omega_1, \omega_2]$ requires every row to carry
-verdict `EXCLUDED_EMPTY` or `EXCLUDED_LAMBDA` (no `HIT` or `OPEN` rows).
-
----
-
-## Mathematical Background
-
-### Why solutions must eventually stop
-
-The primorial $P_r = 2 \cdot 3 \cdot 5 \cdots p_r$ bounds the prime-divisor count:
-any $m < P_{r+1}$ satisfies $\omega(m) \leq r$. For $n(n+1)$ to be prime-complete
-in the interval $P_r \leq n(n+1) < P_{r+1}$, its greatest prime factor index must
-also satisfy $\pi(\mathrm{gpf}(n(n+1))) \leq r$.
-
-The primorial barrier grows as $r \sim 2\log(n) / \log(\log(n))$, while smooth-number
-theory (Dickman–de Bruijn) predicts the minimum greatest-prime-factor index grows as
-$\sim (\log(n))^2 / (2\log(\log(n)))$. Their ratio grows as $\log(n)/4 \to \infty$,
-implying that prime-complete products must become impossible beyond a finite point.
-
-### Størmer's theorem
-
-For any fixed finite prime set $P$, Størmer (1897) proved that there are only
-finitely many pairs of consecutive $P$-smooth integers, and that all of them can
-be found via Pell equations. This provides the finite-reduction framework: for each
-fixed $\omega$, the Lehmer-Clements search is provably complete.
-
-### The CRT tail-closure argument
-
-The catch-up block $H_\omega = \{p_9, \ldots, p_\omega\}$ must be absorbed
-simultaneously by the coprime pair $(n, n+1)$ for any order $\omega$ solution.
-The CRT/LCM Catch-Up Proposition states: if $\lambda_{H_\omega}(q,\sigma) > L_\omega$
-for every mask $q$ and side assignment $\sigma$, then no prime-complete products
-of order $\omega$ exist. As $\omega$ grows, the LCM of entry periods grows far faster
-than $L_\omega = p_\omega$, providing the analytic tail closure beyond the
-computationally verified base.
-
-Full details of the proof structure are given in `CRT_LCM_Catch_Up_Lemma.tex`
-(see the companion repository).
+Each summary JSON records the full pruning funnel: discriminants removed by the $y_1$ gate,
+by the rank-LCM gate (`n_rank_lcm_exceeds`), the survivors (`n_rank_survives`), the indices
+checked, and any hits. The accounting is exact — every discriminant is classified.
 
 ---
 
-## Reproducing the Certificate
+## Status of the proof
 
-```bash
-# Full certification run, ω = 9..17, on a 10-core machine
-python3 LCm_Solver.py \
-  --mode certify \
-  --start_omega 9 \
-  --end_omega 17 \
-  --outdir lc_cert_2026 \
-  --gp_path $(which gp) \
-  --workers $(nproc)
-
-# Verify the master verdict
-python3 -c "
-import json
-m = json.load(open('lc_cert_2026/lc_master_summary.json'))
-print('any_hit:', m['any_prime_complete_hit'])
-for p in m['per_omega']:
-    print(f\"  omega={p['omega']}  verdict={p['verdict']}  elapsed={p['elapsed_sec']:.1f}s\")
-"
-```
-
-Expected output:
-```
-any_hit: False
-  omega=9   verdict=COMPLETE_NO_HITS  elapsed=...
-  omega=10  verdict=COMPLETE_NO_HITS  elapsed=...
-  ...
-  omega=17  verdict=COMPLETE_NO_HITS  elapsed=...
-```
-
-The SHA-256 hash of each certificate CSV is recorded in the per-omega summary JSON,
-providing a tamper-evident audit trail.
-
----
-
-## Related Programs
-
-- **[Nr_Solver](https://github.com/kenatiod/Nr_Solver)** — earlier Størmer–Lehmer enumerator for run-length $r$ products; data files for $\omega = 2$ to $17$ are archived there.
-- **[Delta_min](https://github.com/kenatiod/Delta_min)** — C program that scans doubling intervals for the minimum $\pi(\mathrm{gpf}(n(n+1))) - \omega(n(n+1))$ gap, providing heuristic corroboration for finiteness across $n$ up to $2^{46}$.
-
----
-
-## Citation
-
-If you use this code or the certificate data in your research, please cite:
-
-> Ken Clements, *LC_Solver: Lehmer-Clements enumerator for prime-complete products
-> of consecutive integers*, GitHub, May 2026.
-> https://github.com/kenatiod/LC_Solver
-
----
-
-## Authors
-
-Ken Clements May 2026.
-
-Lehmer-Clements algorithm first described: May 1, 2026.
+This program supplies the **unconditional finite base** of the termination argument: it
+certifies, level by level, that no prime-complete product $n(n+1)$ exists beyond 633555 for
+each ω it processes. The accompanying analysis (floor/ceiling crossing against
+[A002072](https://oeis.org/A002072), and the rank-LCM survivor collapse documented here)
+addresses the tail. A full unconditional proof for all ω remains open; the rank-LCM survival
+bound (this README's central finding) and an effective sublinear bound on the A002072 ceiling
+are two routes toward it.
 
 ---
 
 ## License
 
-This project is released under the [MIT License](LICENSE).
+See the repository for license details.
+
+## Citation
+
+If you use this software or its results, please cite the repository and the accompanying note,
+*The Lehmer-Clements enumerator: rank-LCM pruning for prime-complete consecutive pairs*
+(K. Clements, 2026).
