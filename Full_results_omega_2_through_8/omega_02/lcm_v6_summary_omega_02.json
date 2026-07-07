@@ -1,0 +1,155 @@
+{
+  "program": "LC_Solver",
+  "version": "6.6",
+  "engine": "rank_lcm_recurrence",
+  "omega": 2,
+  "pmax": 3,
+  "L": 30,
+  "H": 2,
+  "block_log2": 8,
+  "scheduler": "hard_first",
+  "min_blocks_per_worker": 64,
+  "max_low_bits": 0,
+  "n_blocks": 3,
+  "n_blocks_done": 3,
+  "n_discriminants_expected": 3,
+  "n_discriminants_run": 3,
+  "n_prefiltered": 0,
+  "n_cut_by_x": 0,
+  "n_gate_y1": 0,
+  "n_rank_missing": 0,
+  "n_rank_lcm_exceeds": 0,
+  "n_rank_survives": 3,
+  "n_rank_candidate_indices": 75,
+  "n_index_checked": 75,
+  "n_odd_x": 3,
+  "n_y_smooth_at_rank": 4,
+  "n_smooth_pairs": 3,
+  "hits_total": 3,
+  "hit_values": [
+    2,
+    3,
+    8
+  ],
+  "hit_records": [
+    {
+      "m": 2,
+      "D": 6,
+      "mask": 3,
+      "j": 1,
+      "rank_R": 1,
+      "x_digits": 1,
+      "y_digits": 1
+    },
+    {
+      "m": 3,
+      "D": 3,
+      "mask": 2,
+      "j": 2,
+      "rank_R": 1,
+      "x_digits": 1,
+      "y_digits": 1
+    },
+    {
+      "m": 8,
+      "D": 2,
+      "mask": 1,
+      "j": 2,
+      "rank_R": 2,
+      "x_digits": 2,
+      "y_digits": 2
+    }
+  ],
+  "slow_d_records": [
+    {
+      "D": 6,
+      "mask": 3,
+      "status": "HIT",
+      "total_sec": 8.4e-05,
+      "pell_sec": 1.4e-05,
+      "x1_digits": 1,
+      "y1_digits": 1,
+      "y1_smooth": true,
+      "rank_R": 1,
+      "rank_missing_prime": 0,
+      "rank_multiples": 30,
+      "j_checked": 30,
+      "smooth_pairs": 1,
+      "hits": [
+        2
+      ],
+      "error": ""
+    },
+    {
+      "D": 3,
+      "mask": 2,
+      "status": "HIT",
+      "total_sec": 3.1e-05,
+      "pell_sec": 6e-06,
+      "x1_digits": 1,
+      "y1_digits": 1,
+      "y1_smooth": true,
+      "rank_R": 1,
+      "rank_missing_prime": 0,
+      "rank_multiples": 30,
+      "j_checked": 30,
+      "smooth_pairs": 1,
+      "hits": [
+        3
+      ],
+      "error": ""
+    },
+    {
+      "D": 2,
+      "mask": 1,
+      "status": "HIT",
+      "total_sec": 2.6e-05,
+      "pell_sec": 5e-06,
+      "x1_digits": 1,
+      "y1_digits": 1,
+      "y1_smooth": true,
+      "rank_R": 2,
+      "rank_missing_prime": 0,
+      "rank_multiples": 15,
+      "j_checked": 15,
+      "smooth_pairs": 1,
+      "hits": [
+        8
+      ],
+      "error": ""
+    }
+  ],
+  "slow_d_limit": 50,
+  "slow_d_min_sec": 0.0,
+  "accounting_ok": true,
+  "verdict": "COMPLETE_WITH_HITS",
+  "elapsed_sec": 0.018,
+  "rates": {
+    "blocks_per_sec": 165.434,
+    "discriminants_per_sec": 165.434,
+    "indices_per_sec": 4135.8506
+  },
+  "timing": {
+    "total_pell_sec": 0.0,
+    "total_rank_sec": 0.0,
+    "total_recurrence_sec": 0.0,
+    "total_worker_elapsed_sec": 0.0
+  },
+  "n_errors": 0,
+  "error_samples": [],
+  "self_test_ok": null,
+  "self_test_detail": null,
+  "d_csv_sha256": "24a70efa7203e782843d84203332c10c24e56f1419b0e31ef858e36f973f358a",
+  "hit_csv_sha256": "a59b17878dfa8f827f1ac44c47e08a6e83cf40bc205f1794887cf7cb4793c510",
+  "slow_d_csv_sha256": "a6bdb3373cbbc78ece0ceefb0abbe0703f7a8a1880f5a62eeaf65f5a3c511994",
+  "max_m": 0,
+  "max_m_expo": 0,
+  "cypari2_available": true,
+  "gmpy2_available": true,
+  "gp_path": "gp",
+  "workers": 10,
+  "peak_rss_mb": 38.14,
+  "timestamp": "2026-06-28T10:50:32+00:00",
+  "python_version": "3.12.7 | packaged by conda-forge | (main, Oct  4 2024, 15:57:01) [Clang 17.0.6 ]",
+  "platform": "macOS-26.5.1-arm64-arm-64bit"
+}

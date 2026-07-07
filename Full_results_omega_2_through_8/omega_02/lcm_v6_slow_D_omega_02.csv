@@ -1,0 +1,4 @@
+omega,rank,D,mask,status,total_sec,pell_sec,x1_digits,y1_digits,y1_smooth,rank_R,rank_missing_prime,rank_multiples,j_checked,smooth_pairs,hits,error
+2,1,6,3,HIT,0.000084,0.000014,1,1,1,1,0,30,30,1,2,
+2,2,3,2,HIT,0.000031,0.000006,1,1,1,1,0,30,30,1,3,
+2,3,2,1,HIT,0.000026,0.000005,1,1,1,2,0,15,15,1,8,

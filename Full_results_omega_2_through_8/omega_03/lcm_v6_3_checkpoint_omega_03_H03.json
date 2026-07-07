@@ -1,0 +1,39 @@
+{
+  "program": "LC_Solver",
+  "version": "6.6",
+  "omega": 3,
+  "H": 3,
+  "completed_high_masks": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "stats": {
+    "n_d_run": 7,
+    "n_prefiltered": 0,
+    "n_cut_by_x": 0,
+    "n_gate_y1": 0,
+    "n_rank_missing": 0,
+    "n_rank_lcm_exceeds": 0,
+    "n_rank_survives": 7,
+    "n_rank_candidate_indices": 135,
+    "n_index_checked": 135,
+    "n_odd_x": 5,
+    "n_y_smooth_at_rank": 7,
+    "n_smooth_pairs": 5,
+    "n_hit_discriminants": 5,
+    "n_errors": 0
+  },
+  "hit_values": [
+    5,
+    9,
+    15,
+    24,
+    80
+  ],
+  "timestamp": "2026-06-28T10:50:32+00:00"
+}
